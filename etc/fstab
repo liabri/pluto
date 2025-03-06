@@ -1,0 +1,6 @@
+UUID=f943f01f-6b24-43c9-a85d-837e1c2b1ea6	/	ext4	rw,relatime,shared 0 1
+UUID=F052-7C5A	/boot/efi	vfat	rw,relatime,fmask=0022,dmask=0022,codepage=437,iocharset=utf8,shortname=mixed,errors=remount-ro,nosuid,nodev,noexec 0 2
+UUID=716ccabf-19db-4f5a-bdb0-60a348adf5e7	swap	swap,nosuid,nodev,noexec	defaults	0 0
+/dev/cdrom	/media/cdrom	iso9660	noauto,ro 0 0
+/dev/usbdisk	/media/usb	vfat	noauto	0 0
+tmpfs	/tmp	tmpfs	nosuid,nodev	0	0

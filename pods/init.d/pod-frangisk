@@ -1,0 +1,8 @@
+#!/sbin/openrc-run
+# this file has a symlink in /etc/init.d
+
+pod_name=frangisk
+command_user=liam
+pod_network=frangisk
+
+source "/home/${command_user}/pods/init.d/init"
