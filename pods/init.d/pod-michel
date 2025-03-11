@@ -3,6 +3,5 @@
 
 pod_name=michel
 command_user=liam
-pod_network=michel
 
 source "/home/${command_user}/pods/init.d/init"

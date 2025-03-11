@@ -9,38 +9,38 @@ metadata:
   name: frangisk
 spec:
   containers:
-  - args:
-    - -D
-    - -f
-    - /etc/lighttpd/lighttpd.conf
-    image: localhost/lighttpd:latest
-    name: photography
-    ports:
-    - containerPort: 82
-      hostPort: 8080
-    volumeMounts:
-    - mountPath: /var/www/html
-      name: photography
-      readOnly: true
-  - args:
-    - -D
-    - -f
-    - /etc/lighttpd/lighttpd.conf
-    image: localhost/lighttpd:latest
-    name: weblog
-    ports: 
-    - containerPort: 81
-      hostPort: 8081
-    volumeMounts:
-    - mountPath: /var/www/html
-      name: weblog
-      readOnly: true
+    - name: photography
+      args:
+        - -D
+        - -f
+        - /etc/lighttpd/lighttpd.conf
+      image: localhost/lighttpd:latest
+      ports:
+        - containerPort: 80
+      volumeMounts:
+        - mountPath: /var/
+          name: photography
+          readOnly: true
+    - name: weblog
+      args:
+        - -D
+        - -f
+        - /etc/lighttpd/lighttpd.conf
+      image: localhost/lighttpd:latest
+      ports: 
+        - containerPort: 8080
+      volumeMounts:
+        - mountPath: /var/
+          name: weblog
+          readOnly: true
   volumes:
-  - hostPath:
-      path: /home/liam/pods/frangisk/photography
-      type: Directory
-    name: photography
-  - hostPath: 
-      path: /home/liam/pods/frangisk/weblog
-      type: Directory
-    name: weblog
+    - name: photography
+      hostPath:
+        path: /home/liam/pods/frangisk/photography
+        type: Directory
+    - name: weblog
+      hostPath: 
+        path: /home/liam/pods/frangisk/weblog
+        type: Directory   
+
+

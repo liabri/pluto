@@ -3,6 +3,5 @@
 
 pod_name=frangisk
 command_user=liam
-pod_network=frangisk
 
 source "/home/${command_user}/pods/init.d/init"

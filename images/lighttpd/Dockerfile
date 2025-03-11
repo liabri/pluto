@@ -1,7 +1,7 @@
 FROM alpine:3.21.3
 
 LABEL org.opencontainers.image.title="Lighttpd"
-LABEL org.opencontainers.image.authors="Liam Brincat"
+LABEL org.opencontainers.image.authors="liabri"
 
 ARG LIGHTTPD_VERSION=1.4.76-r0
 
@@ -14,8 +14,6 @@ RUN set -x \
     && mkdir -vp /var/www/html
 
 COPY resources/lighttpd/ /etc/lighttpd/
-
-EXPOSE 80/tcp
 
 ENTRYPOINT ["/usr/sbin/lighttpd"]
 CMD ["-D", "-f", "/etc/lighttpd/lighttpd.conf"]

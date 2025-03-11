@@ -14,17 +14,20 @@ spec:
     - --config
     - /etc/caddy/Caddyfile
     image: localhost/caddy-reverse-proxy:latest
-    name: caddy-reverse-proxy
+    name: reverse-proxy
     ports:
     - containerPort: 80
-      hostPort: 8080
+      hostPort: 80
+#    - containerPort: 443
+#      hostPort: 443
+    networks: 
+    - name: frangisk
     volumeMounts:
     - mountPath: /etc/caddy/
-      name: caddyFile
+      name: caddy-config-volume
       readOnly: true
   volumes:
-  - hostPath:
+  - name: caddy-config-volume
+    hostPath:
       path: /home/liam/pods/michel/reverse-proxy
       type: Directory
-    name: caddyFile
-
