@@ -1,1 +1,0 @@
-../../../lib/cgit/cgit.cgi

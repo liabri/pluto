@@ -15,8 +15,6 @@ spec:
         - -f
         - /etc/lighttpd/lighttpd.conf
       image: localhost/lighttpd:latest
-      ports:
-        - containerPort: 80
       volumeMounts:
         - mountPath: /var/
           name: photography
@@ -27,10 +25,8 @@ spec:
         - -f
         - /etc/lighttpd/lighttpd.conf
       image: localhost/lighttpd:latest
-      ports: 
-        - containerPort: 8080
       volumeMounts:
-        - mountPath: /var/
+        - mountPath: /var
           name: weblog
           readOnly: true
   volumes:

@@ -14,6 +14,7 @@ RUN apk add --no-cache \
 	&& rm -rvf /var/cache/apk/* \
 	&& rm -rvf /etc/caddy/Caddyfile
 
-EXPOSE 80 443 2019
+EXPOSE 80 443
+
 ENTRYPOINT ["/usr/sbin/caddy"]
 CMD ["run", "--config", "/etc/caddy/Caddyfile"]

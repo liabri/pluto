@@ -2,9 +2,9 @@
 # cgit config
 #
 
-css=/cgit/cgit.css
-logo=/cgit/cgit.png
-favicon=/cgit/favicon.ico
+css=cgit.css
+logo=/var/www/html/cgit.png
+favicon=favicon.ico
 
 enable-http-clone=0
 

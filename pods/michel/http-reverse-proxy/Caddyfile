@@ -1,0 +1,26 @@
+# HTTP to HTTPS redirection
+#http:// {
+#	redir https://{host}{uri} permanent
+#}
+
+:80 {
+	uri strip_suffix "/" 
+	handle_path /weblog {
+		reverse_proxy http://weblog:8080
+	}
+
+	handle_path /git {
+		reverse_proxy http://cgit
+	}
+
+#	handle_path /dev
+#	handle_path /docs
+
+	reverse_proxy http://photography
+}
+
+:443 {
+	tls internal
+	respond "BOO!"
+}
+
