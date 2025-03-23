@@ -1,8 +1,8 @@
 FROM alpine:3.21.3
 
-LABEL org.opencontainers.image.title=Caddy
+LABEL org.opencontainers.image.title="caddy"
 LABEL org.opencontainers.image.description="a caddy reverse proxy"
-LABEL org.opencontainers.image.authors=Liam
+LABEL org.opencontainers.image.authors="liabri"
 
 ARG CADDY_VERSION=2.8.4-r4
 

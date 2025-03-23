@@ -1,5 +1,9 @@
 FROM localhost/lighttpd:latest
 
+LABEL org.opencontainers.image.title="cgit"
+LABEL org.opencontainers.image.description="provides a cgit instance to run behind a reverse proxy"
+LABEL org.opencontainers.image.authors="liabri"
+
 ARG CGIT_VERSION=1.2.3-r5
 
 RUN set -ex; \
@@ -7,4 +11,4 @@ RUN set -ex; \
 	cgit${CGIT_VERSION:+=}${CGIT_VERSION} \
 	py3-markdown
 
-COPY resources/etc/lighttpd /etc/lighttpd/
+COPY cgit.conf /etc/lighttpd/conf.d/cgit.conf
