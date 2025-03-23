@@ -2,11 +2,13 @@
 # cgit config
 #
 
-css=cgit.css
-logo=/var/www/html/cgit.png
-favicon=favicon.ico
+virtual-root=/git
 
-enable-http-clone=0
+css=/git/cgit.css
+logo=/git/cgit.png
+favicon=git/favicon.ico
+
+enable-http-clone=1
 
 # prevents  webcrawlers (like google) indexing the site
 robots=noindex, nofollow
@@ -16,10 +18,13 @@ readme=:README.md
 enable-commit-graph=1
 enable-log-filecount=1
 enable-log-linecount=1
-max-stats=quarter
+enable-index-links=1
+enable-subject-links=1
+max-stats=year
 
-clone-url=https://127.0.0.1/git/$CGIT_REPO_URL git://127.0.0.1/git/$CGIT_REPO_URL ssh://git@127.0.0.1/git/$CGIT_REPO_URL
+footer="contact me @ liabri@tuta.io"
 
+clone-url=http://liambrincat.mt/git/$CGIT_REPO_URL ssh://git@liambrincat.mt/$CGIT_REPO_URL
 snapshots=tar.gz tar.bz2 zip
 
 
@@ -38,8 +43,8 @@ mimetype.svg=image/svg+xml
 
 repository-sort=age
 remove-suffix=1
-scan-path=/home/git/
+scan-path=/home/git/repos
 enable-git-config=1
 
-root-desc=powered by inadequate sleep
-root-title=liabri's git repository
+root-desc=projects from 2017 until the present all centralised in one place.
+root-title=liabri's git directory

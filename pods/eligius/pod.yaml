@@ -15,15 +15,15 @@ spec:
         - containerPort: 22
           hostPort: 22
       volumeMounts:
-        - mountPath: /srv/
+        - mountPath: /home/git/repos
           name: git
         - mountPath: /home/git/.ssh/authorized_keys
           name: authorized-keys
     - name: cgit
       image: localhost/cgit:latest
-      ports: 
-        - containerPort: 80
-          hostPort: 0
+      ports:
+        - hostPort: 8080
+          containerPort: 80
       args:
         - -D
         - -f
@@ -36,6 +36,9 @@ spec:
         - name: cgit
           mountPath: /etc/cgitrc
           subPath: etc/cgitrc
+          readOnly: true
+        - name: git
+          mountPath: /home/git/repos
           readOnly: true
 #        - name: cgit
 #          mountPath: /usr/share/webapps/

@@ -3,14 +3,24 @@
 #	redir https://{host}{uri} permanent
 #}
 
+{
+	debug
+	http_port 80
+	https_port 443
+	admin off
+}
+
 :80 {
 	uri strip_suffix "/" 
-	handle_path /weblog {
+	redir /weblog/ /weblog
+	handle_path /weblog* {
 		reverse_proxy http://weblog:8080
 	}
 
-	handle_path /git {
+	redir /git/ /git
+	handle_path /git* {
 		reverse_proxy http://cgit
+		file_server
 	}
 
 #	handle_path /dev

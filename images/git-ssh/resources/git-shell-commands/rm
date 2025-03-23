@@ -1,0 +1,9 @@
+#!/bin/sh
+name=$(basename $1).git
+
+read -p "Are you sure you want to delete: $name? [y/n] " -n 1 -r
+echo 
+if [[ $REPLY =~ ^[Yy]$ ]] 
+then 
+	rm -rf repos/$name 
+fi
