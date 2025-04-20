@@ -4,7 +4,7 @@ LABEL org.opencontainers.image.title="lighttpd"
 LABEL org.opencontainers.image.description="provides a simple lighttpd server (supporting html & cgi) at /var/www/html on a port defined in the container"
 LABEL org.opencontainers.image.authors="liabri"
 
-ARG LIGHTTPD_VERSION=1.4.76-r0
+ARG LIGHTTPD_VERSION=1.4.79-r0
 
 RUN set -x \
     && apk add --no-cache \
