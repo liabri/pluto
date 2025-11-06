@@ -5,8 +5,8 @@ my personal homelab completely based on alpine and podman. all images are create
 
 pods are configured in <pod_name>/pod.yaml following the k8s yaml implementation in podman. further, pods are semantically distinct:
 
-- michel - protection: http-reverse-proxy, wireguard; 
-- frangisk - public service: photography, weblog;  
+- michel - protection: http-reverse-proxy, wireguard;
+- frangisk - public service: photography, weblog;
 - _eligius - git: git-ssh, cgit;_
 - _isidore - nas: nas-ganesha;_
 - _gavrilo - cctv;_
@@ -35,7 +35,7 @@ server.tag="this-is-a-tag"
 server.port=8080
 ```
 
-### git-ssh: a simple ssh server limited to git-shell-commands `ls` `mk <repo>` and `rm <repo>`. 
+### git-ssh: a simple ssh server limited to git-shell-commands `ls` `mk <repo>` and `rm <repo>`.
 the default directory is /home/git/repos (as defined in git-shell-commands), I would suggest mounting your repo directory here. Additionally, following the ssh standard, `/home/git/.ssh/authorized_keys` will be read.
 
 ### cgit: a modified lighttpd image serving cgit
@@ -111,8 +111,8 @@ file system good security practices:
 	capabilities:
 		reduce root privileges such as CAP_SYS_ADMIN; CAP_NET_ADMIN; CAP_SYS_MODULE;
 		seccomp profiles, apparmor and selinux policies to confine container permissions;
-		
-		
+
+
 
 ALL MY PROBLEMS LIE AT THE FAULT OF kube plays yaml, it lacks stdin/tty, and cannot give a container inside a pod its own network namespace (i think).
 
@@ -123,66 +123,86 @@ from wan, you can:
 read-only the cpu temperature, gpu temperature, disk usage, ram usage, uptime, network traffic, containers logs (wireguard, caddy, host)
 
 
-## networking 
+## networking
 
+\pagebreak
 ### topology
 ```
-														 Internet (WAN)
-															   │
-											 +----------------─▼-----------------+
-											 |         Router                    |         'admin' VPN on OpenWrt with  port knocking on random port)
-								 IDS/IPS --> | + OpenWrt                         |────────────────────────────────────┐
-											 +----------------─┬-----------------+                        +-----------▼-----------+
-											                   │                                           | IPMI/BMC Interface   | <-- read-write admining (container state, zfs rollback, mac policy & firewall changes)
-															   │                                          +-----------┬-----------+
-													  +--------▼----------+                               			  │
-													  |    Host (eth0)    |                                           │
-													  | + apparmor        |───────────────────────────────────────────┘ 													  
-													  | + nftables        | <-- zero-trust, pod isolation (filtering inter-container traffic), VPN ACLs, logging, rate limiting, isolate private and public network
-													  +--------┬----------+
-												┌──────────────┴──────────────┐	
-												│                             │
-									+-----------▼-----------+     +-----------▼-----------+
-									| Host Bridge Interface |     | Host Bridge Interface | 
-									|   (private network)   |     |    (public network)   |
-									+-----------┬-----------+     +-----------┬-----------+
-												└───┐                     ┌───┘
-													│		              │
-										 +----------┼---------------------┼----------+
-										 |          │      pod michel     │          |  
-										 |  ┌───────▼───────┐     ┌───────▼───────┐  |  
-										 |  │ WireGuard VPN │ <---┤ HTTP Reverse  ├--┼----- encrypted access, strong keys, client ACLs, kill-switch, knockd (port knocking), random port (obscurity) 
-										 |  │ (tun0)        │     │ Proxy (Caddy) │ <┼----- HTTPS, security headers, rate limiting for public services, restrict methods to GET POST HEAD, header_down to remove system info
-										 |  └───────┬───────┘     └───────┬───────┘  |  
-										 |          │                     │          |
-										 +----------┼---------------------┼----------+  
-													│                     │
-									 ┌──────────────┘			          │
-									 │				                      │
-		+----------------------------┼------------------------------------┼--------------+
-		|                            │             network       		  │			     |
-		|                            │            namespaces              │              |
-		|   +------------------------▼------------------------+  +--------▼----------+   |
-		|   |                   private pods                  |  |   public pods     |   |
-		|   | ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ |  | ┌───────────────┐ |   | <-- Hardened Containers: seccomp, AppArmor/SELinux, read-only FS, least privilege.
-		|   | │ pod eligius │ │ pod isidore │ │ pod gavrilo │ |  | │ pod frangisk  │ |   | 
-		|   | ╞═════════════╡ ╞═════════════╡ ╞═════════════╡ |  | ╞═══════════════╡ |   |
-		|   | │ + git-ssh   │ │ + nas       │ │ + readonlyadmin  | │ + liambrincat │ |   | 
-		|   | │ + cgit-web  │ └─────────────┘ └─────────────┘ |  | └───────────────┘ |   | 
-		|   | └─────────────┘                                 |  +-------------------+   |
-		|   | ┌────────────────────┐                          |                          |
-		|   | │ pod akitio         │                          |                          |
-		|   | ╞════════════════════╡                          |                          | 
-		|   | │ + minecraft-server │                          |                          | 
-		|   | │ + little-a-map     │                          |                          | 		
-		|   | │ + borg-backup      │                          |                          | 		
-		|   | └────────────────────┘                          |                          | 
-		|   +-------------------------------------------------+                          |
-		|																				 |																				 																			 
-		+--------------------------------------------------------------------------------+
+                    Internet (WAN)
+                         │
+       ┌─────────────────▼─────────────────┐
+       │               Router              │────────────────┐
+       ╞═══════════════════════════════════╡     ┌──────────▼──────────┐
+       │ + OpenWrt (IDS/IPS)               │     │ IPMI/BMC Interface  │
+       │   ↳ 'admin' vpn w/ port knocking  │     ╞═════════════════════╡
+       └─────────────────┬─────────────────┘     │ + read-write admin  │
+   ┌─────────────────────▼─────────────────────┐ │   ↳ mac policy      │
+   │                Host (eth0)                │ │   ↳ firewall        │
+   ╞═══════════════════════════════════════════╡ │   ↳ zfs rollbacks   │
+   │ + apparmor                                │ │   ↳ container state │
+   │ + nftables                                │ └──────────┬──────────┘
+   │   ↳ zero-trust                            ◀────────────┘
+   │   ↳ inter-container traffic filtering     │
+   │   ↳ VPN ACLs                              │
+   │   ↳ logging                               │
+   │   ↳ rate limiting                         │
+   └─────────────────────┬─────────────────────┘
+                     ┌───┴─────────────────────────┐
+         +-----------▼-----------+     +-----------▼-----------+
+         | Host Bridge Interface |     | Host Bridge Interface |
+         |   (private network)   |     |    (public network)   |
+         +-----------┬-----------+     +-----------┬-----------+
+                     └┐                           ┌┘
+       +--------------┼---------------------------┼--------------+
+       |              │       pod michel          │              |
+       |  ┌───────────▼───────────┐   ┌───────────▼───────────┐  |
+       |  │ WireGuard VPN (tun0)  │   │ Reverse Proxy (Caddy) │  |
+       |  ╞═══════════════════════╡   ╞═══════════════════════╡  |
+       |  │ + encrypted w/ keys   │   │ + https               │  |
+       |  │ + port knocking on a  │   │ + security headers    │  |
+       |  │   random port         │   │ + rate limiting       │  |
+       |  │ + kill switch         │   │ + GET/POST/HEAD only  │  |
+       |  │ + client ACLs         │   │ + header_down         │  |
+       |  └───────────┬───────────┘   └───────────┬───────────┘  |
+       +--------------┼---------------------------┼--------------+
+                    ┌─┘                           └─┐
+    +---------------┼-------------------------------┼---------------+
+    |               │     network namespace         │               |
+    |  +------------▼------------+     +------------▼------------+  |
+    |  | private pods            |     | public pods             |  |
+    |  ├-------------------------┤     ├-------------------------┤  |
+    |  | ┌─────────────────────┐ |     | ┌─────────────────────┐ |  |
+    |  | │ pod akitio          │ |     | │ pod frangisk        │ |  |
+    |  | ╞═════════════════════╡ |     | ╞═════════════════════╡ |  |
+    |  | │ + minecraft-server  │ |     | │ ↳ AppArmor          │ |  |
+    |  | │ + little-a-map      │ |     | │ ↳ seccomp           │ |  |
+    |  | │ + borg-backup       │ |     | │ ↳ read-only         │ |  |
+    |  | └─────────────────────┘ |     | │ ↳ least privelages  │ |  |
+    |  | ┌─────────────────────┐ |     | └─────────────────────┘ |  |
+    |  | │ + borg-backup       │ |     +-------------------------+  |
+    |  | │ pod eligius         │ |                                  |
+    |  | ╞═════════════════════╡ |                                  |
+    |  | │ + git-ssh           │ |                                  |
+    |  | │ + cgit-web          │ |                                  |
+    |  | └─────────────────────┘ |                                  |
+    |  | ┌─────────────────────┐ |                                  |
+    |  | │ pod isidore         │ |                                  |
+    |  | ╞═════════════════════╡ |                                  |
+    |  | │ + nas               │ |                                  |
+    |  | └─────────────────────┘ |                                  |
+    |  | ┌─────────────────────┐ |                                  |
+    |  | │ pod gavrilo         │ |                                  |
+    |  | ╞═════════════════════╡ |                                  |
+    |  | │ ↳ read-only         │ |                                  |
+    |  | │ + cctv              │ |                                  |
+    |  | └─────────────────────┘ |                                  |
+    |  +-------------------------+                                  |
+    +---------------------------------------------------------------+
 ```
 
-### simple network 
+\pagebreak
+### simple network
+
 ```
                           Internet (WAN)
                                 │
@@ -200,35 +220,36 @@ read-only the cpu temperature, gpu temperature, disk usage, ram usage, uptime, n
                    │                      │
              +-----▼-----+          +-----▼-----+
              |   eth0    |          |   eth0    |   <-- Container interfaces
-             | (pod1)    |          | (pod2)    |
+             |  (pod1)   |          |  (pod2)   |
              +-----------+          +-----------+
 ```
 
+\pagebreak
 ### routing traffic through a vpn or reverse proxy in pod-michel
 ```
                           Internet (WAN)
-                              │   ▲       
-					  +-------▼---┴-------+  
-                      |    Host (eth0)    |  
+                              │   ▲
+					  +-------▼---┴-------+
+                      |    Host (eth0)    |
                       +-------┬---▲-------+
-                              │   │       
-					  +-------▼---┴-------+  
-                      |       bridge      | 
+                              │   │
+					  +-------▼---┴-------+
+                      |       bridge      |
                       +-------┬---▲-------+
-                              │   │       
-					  +-------▼---┴-------+    
-					  |      (veth0)      |   
+                              │   │
+					  +-------▼---┴-------+
+					  |      (veth0)      |
                       +-------┬---▲-------+
-                              │   │       
-					  +-------▼---┴-------+     
+                              │   │
+					  +-------▼---┴-------+
 					  | wireguard  (tun0) | (or reverse proxy)
                       +-------┬---▲-------+
-                              │   │       
-					  +-------▼---┴-------+     
-					  |      (veth1)      |   
+                              │   │
+					  +-------▼---┴-------+
+					  |      (veth1)      |
                       +-------┬---▲-------+
-                              │   │       
-					  +-------▼---┴-------+    
-					  | pod eligius (eth0)|   
-					  +-------------------+     
+                              │   │
+					  +-------▼---┴-------+
+					  | pod akitio (eth0) |
+					  +-------------------+
  ```
