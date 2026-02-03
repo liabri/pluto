@@ -1,7 +1,7 @@
 #!/bin/sh
 
-BLOCK=akitio
-BASE=/home/liam/pods/akitio
+BASE="$HOME/modules/akitio"
+WORLD_DIR="$HOME/storage/loghob/minecraft/akitio/world
 RCON_PASSWORD="testingbaby"
 
 # ensure containers have permission to mounted files
@@ -18,9 +18,9 @@ podman volume create \
 
 # run minecraft-server
 # make sure working-tree for server is latest ver
-#sh $BASE/minecraft-server/check-working-tree.sh # commented until i test rcon, then uncomment.
+#sh $BASE/minecraft-server/check-working-tree.sh # commented until i update akitio-server w/ rcon
 
-# eventually -p 25565:25565 wont be required, as we do not want to open it to the host, but rather only through wireguard vpn
+# eventually -p 25565:25565 wont be required, as we do not want to open it to the host, but rather only through a reverse proxy probably?
 podman run --replace -d -it --name minecraft-server \
 	-p 25565:25565 \
 	-v $BASE/minecraft-server/working-tree:/srv/minecraft:rw \
@@ -30,12 +30,11 @@ podman run --replace -d -it --name minecraft-server \
 	localhost/minecraft-server:latest \
 	java -Xmx5G -jar -Dfabric.addMods=mods /srv/minecraft/fabric-server-mc.1.20.1-loader.0.16.9-launcher.1.0.1.jar
 
-# run web terminal (ttyd using rcon-cli for ipc via unix sockets) 127.0.0.1 -p enforces that it is truly only accessible locally (i.e. via a vpn) -p 127.0.0.1:7681:7681
+# run web terminal (ttyd using rcon-cli, ipc via unix sockets) 127.0.0.1 -p enforces that it is truly only accessible locally (i.e. via a vpn) -p 127.0.0.1:7681:7681, however, i dont think i need to open port on host
 podman run --replace -d -it --name minecraft-ttyd-rcon \
 	-p 0.0.0.0:7681:7681 \
 	-v rcon_ipc:/tmp:rw \
 	-v "$BASE/minecraft-server/working-tree/logs:/srv/minecraft-server/logs:ro" \
 	--network=privat \
 	-e RCON_PASSWORD="$RCON_PASSWORD" \
-	localhost/minecraft-ttyd-rcon:latest \
-#	ttyd -p 7681 --writable /bin/sh
+	localhost/minecraft-ttyd-rcon:latest
