@@ -4,15 +4,11 @@ LABEL org.opencontainers.image.title="git-ssh"
 LABEL org.opencontainers.image.description="provides an ssh server with a git user"
 LABEL org.opencontainers.image.authors="liabri"
 
-ARG GIT_VERSION=2.47.2-r0
-ARG GIT_LFS_VERSION=3.6.0-r3
-ARG OPENSSH_VERSION=9.9_p2-r0
-
 RUN set -ex; \
     apk add --no-cache \
-    git${GIT_VERSION:+=}${GIT_VERSION} \
-    git-lfs${GIT_LFS_VERSION:+=}${GIT_LFS_VERSION} \
-    openssh${OPENSSH_VERSION:+=}${OPENSSH_VERSION}
+    git \
+    git-lfs \
+    openssh
 
 # generate ssh host keys
 RUN ssh-keygen -A

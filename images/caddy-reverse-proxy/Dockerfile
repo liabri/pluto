@@ -4,7 +4,7 @@ LABEL org.opencontainers.image.title="caddy"
 LABEL org.opencontainers.image.description="a caddy reverse proxy"
 LABEL org.opencontainers.image.authors="liabri"
 
-ARG CADDY_VERSION=2.8.4-r4
+ARG CADDY_VERSION=2.8.4-r7
 
 RUN set -x
 RUN apk add --no-cache \
