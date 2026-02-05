@@ -1,63 +1,72 @@
 # pluto
-my personal homelab completely based on alpine and podman. all images are created by me. **(italics = wip)**
+my personal homelab completely based on alpine and podman. all images are created by me.
 
-## pods
+## modules
 
-pods are configured in <pod_name>/pod.yaml following the k8s yaml implementation in podman. further, pods are semantically distinct:
+containers are organised into functional modules based on responsibility and purpose. podman pods were considered for grouping, however, they were avoided to **minimise attack surface** and allow **fine-grained per-container network and privilege isolation**. pods enforce shared namespaces (network, IPC, and optionally PID) across all member containers, which is often not necessary.
 
-- michel - protection: http-reverse-proxy, wireguard;
-- frangisk - public service: photography, weblog;
-- _eligius - git: git-ssh, cgit;_
-- _isidore - nas: nas-ganesha;_
-- _gavrilo - cctv;_
-- _akitio - minecraft-server, backup, little-a-map;
-- _genesius - radarr etc.._
-- _cecilia - music;_
+this approach keeps containers **semantically grouped** while preserving **runtime isolation**, **flexible networking**, and **selective cooperation**, rather than imposing rigid coupling through pods.
 
-### containers
+### michel
+the `michel` module acts as the semantic gateway for all external access. external traffic is intended to conceptually flow through michel into the `privat` and `public` networks, where a wireguard VPN and an HTTP/TCP reverse-proxy handle routing, respectively. one day, move reverse-proxy-edge to an external server to mask my homelab. **containers**: `reverse-proxy-edge`; `reverse-proxy-stats` (go access); `vpn-edge`.
 
-- michel-http-reverse-proxy: a caddy reverse proxy facilitating access to the internal network 'public';
-- michel-vpn: a wireguard vpn restricting access to the internal network 'private';
-- frangisk-liambrincat: website 'liambrincat';
-- eligius-git-ssh: a simple ssh server to interact with git;
-- eligius-cgit: a simple frontend to view the repo directory -- with http clone;
-- _isidore-nas-ganesha: zfs;_
-- akitio-server;
-- _akitio-backup: using borg, borgmatic (configure borg);_
-- _akitio-little-a-map;_
+### frangisk
+my personal website: photography gallery, weblog, and shop;
+**containers**: `lbmt-darkroom`; `lbmt-weblog`; `lbmt-shop`.
+
+### eligius
+the `eligius` module provides `privat` ssh-access git hosting for a repository pool, with a `public` read-only interface via `cgit`. **containers**: `git-ssh`; `git-web`.
+
+### isidore
+a standard `openssh` server runs in container `nas-sftp` which **bind-mounts** the nas (in my case that is /zfs/storage). the expectation is to be able to mount the drive on devices via `sshfs` or use clients like `filestash` on the web. `sshfs` is rather slow due to its encryption and other factors, so I employ the **golden data** paradigm. this paradigms considers the device a satellite which utilises `nas-sftp` and `rsync` for a git-like workflow. this implies pulling data, pushing local edits, and never directly editing the nas via `sshfs`, except for creating or deleting files and folders.
+
+i am still considering add a  `nas-nfs-ganesha` container to mount the storage on my PC. because, as is, both my PC and laptop are satellites of my server. this leads to have potentially having 3 copies of the same data. if this data is volatile (i.e. edited a lot), it can get messy to track which is the most up to date. if i mount the nas via `nfs` on my PC, the laptop becomes a satellite of my PC. this reduces the possible number of copies to 2.
+
+**containers**: `nas-sftp`; `nas-explorer-web`.
+
+### akitio
+**containers**: `minecraft-server`; `minecraft-ttyd-rcon`; `minecraft-map`; `minecraft-backup`.
+
+### cecilia
+**containers**: `navidrome-server`; `navidrome-web-client`.
+
+### gavrilo
+prospective name for cctv server
+
+### genesius
+prospective name for radarr etccc, but im unsure.
 
 ## images
 
-### lighttpd: a generic lighttpd server
+### localhost/lighttpd: a generic lighttpd server
 use launch parameters: `-D -f /etc/lighttpd/lighttpd.conf"`. the server serves whatever is at `/var/www/html`, and requires /var/lighttpd.conf to be defined as follows:
 ```
 server.tag="this-is-a-tag"
 server.port=8080
 ```
 
-### git-ssh: a simple ssh server limited to git-shell-commands `ls` `mk <repo>` and `rm <repo>`.
-the default directory is /home/git/repos (as defined in git-shell-commands), I would suggest mounting your repo directory here. Additionally, following the ssh standard, `/home/git/.ssh/authorized_keys` will be read.
+### localhost/git-ssh: a simple ssh server 
+limited to git-shell-commands `ls` `mk <repo>` and `rm <repo>`.
+the default directory is /home/git/repos (as defined in git-shell-commands), I would suggest mounting your repo directory here. Additionally, following the ssh standard, `/home/git/.ssh/authorized_keys` will be read. supports git-lfs! requires X package on client.
 
-### cgit: a modified lighttpd image serving cgit
+### localhost/cgit: a modified lighttpd image serving cgit
 all definitions must be done as the lighttpd image, with the addition of a cgitrc which must be mounted to `/etc/cgitrc`
 
-### caddy-reverse-proxy
-a `Caddyfile` must be mounted to `etc/caddy/Caddyfile/`
+### localhost/caddy-reverse-proxy
+a `Caddyfile` must be mounted to `etc/caddy/Caddyfile/`. logging is enabled via 
+```    log {
+        output file /var/log/caddy/access.log
+        format json
+    }
+```
 
-### minecraft-serveraw
-simply provides a headless Java OpenJdk 21 environment exposing port 25565
+### localhost/minecraft-server
+simply provides a Java OpenJdk 21 environment exposing port 25565. working-tree is found in a named volume mount for persistence. before every launch, `check-working-tree.sh` confirms it is up to date with the origin, and if not, will update. the world will also be in this named volume mount, and therefore this image ideally should not ever be mounted with a host bind mount, for security purposes. my system uses borg in another container which mounts the named volume containing the server+world, and backups the world to my `/zfs/storage`.
 
 ## todo
-- separate network namespaces for containers (currently per-pod, make per-container);
 - static site gen for blog need to add --prefix option for all links (in this case /blog/);
-
-- akitio-server (on launch updates to latest akitio-server git repo locally (can do it through the git server, but unless I introduce hooks, there is no need);
-- akitio-backup (borg vs zfs? unfortunately i dont think git-lfs would work, but id prefer it to stay with the same "versioning");
-- akitio-little-a-map;
-- akitio attach to console (stdin & tty) then ssh into container to control.
-
 - git check if a git user (instead of liam) would be good for eligius. (i dont think so as podman is running under liam);
-- cgit private directory;
+- cgit private directory?;
 - cgit hide index.cgit from url (rewrite instead of redirect but not working?);
 - cgit regarding above (currently) redirect, i am regex matching for paths NOT containing " . ", which fucks up for files like fabric.json;
 - cgit fix about-formatting, its 404ing (its detecting the README tho);
@@ -65,67 +74,32 @@ simply provides a headless Java OpenJdk 21 environment exposing port 25565
 - cgit releases (binaries) (might need to code extension myself);
 - cgit some tabs are broken for large repos;
 - git-ssh NOTE git-lfs-transfer will be required on the client to use lfs-over-ssh;
-
 - reverse-proxy statistics
 
 ## cheatsheet
 
-list pods - podman pod ps
-start pod - doas rc-service pod-{name} start
-view user-space network interfaces (netavark) - `doas nsenter -t $(pgrep -u $USER podman) -n ip link`
+- list containers - `podman ps`
+- start pod - `doas rc-service pod-{name} start`
+- view user-space network interfaces (netavark) - `doas nsenter -t $(pgrep -u $USER podman) -n ip link`
 
-## to look into
-users/owners
-selinux
-apparmor
-fail2ban
-nftables
-
-
-custom networking (no dns - assign manually)
-
-strip shared namespace from semantics of pod OR introduce new semantic level above called service groups. must be separated network namespace for security:
-wireguard and caddy;
-akitio server and backup;
-
-currently:
-ip:port
-pod-namespace-address:container's-exposed-port
-
-
-
-networking good security practices:
-	D isolated networks;
-	D nftables on host;
-	D wireguard for private network;
-	remove podman bridge access for all pods besides michel
-
-file system good security practices:
-	volume mounts:
-		dont mount any sensitive directories;
-		use read-only mounts when possible;
-		use named volumes or container-local storage when persistent data is needed, instead of host bind mounts;
-	namespaces:
-		use separate PID, User and Mount namespaces;
-		D rootless containers;
-	capabilities:
-		reduce root privileges such as CAP_SYS_ADMIN; CAP_NET_ADMIN; CAP_SYS_MODULE;
-		seccomp profiles, apparmor and selinux policies to confine container permissions;
-
-
-
-ALL MY PROBLEMS LIE AT THE FAULT OF kube plays yaml, it lacks stdin/tty, and cannot give a container inside a pod its own network namespace (i think).
-
-
-
-from wan, you can:
-
-read-only the cpu temperature, gpu temperature, disk usage, ram usage, uptime, network traffic, containers logs (wireguard, caddy, host)
-
+## to look into/notes
+- users/owners
+- when mounting, prioritise read-only volumes. use named volumes instead of host bind mounts if persistence is needed.
+- reduce root privileges such as CAP_SYS_ADMIN; CAP_NET_ADMIN; CAP_SYS_MODULE. (list enabled privileges: `podman run --rm alpine capsh --print | grep Bounding`);
+- `cat /sys/kernel/security/apparmor/profiles` apparmor enabled if returns anything; `podman run --rm alpine grep Seccomp /proc/self/status` "Seccomp: 2" means a filter is active (the default one). real test: `podman run --rm alpine reboot`. logs: `dmesg | grep -iE "audit|apparmor|seccomp"`
 
 ## networking
+this network architecture utilises a dual-hub, zero-trust model to enforce strict lateral isolation between containers, which unless is required, is usually done via `socat` or opening a `veth` between the appropriate containers. additionally, standard container bridge networking is bypassed in favour of manual `veth` pair injection directly into container network namespaces, which eliminate the host-level gateway and the associated risk of inter-container leaks, common in flat network. containers are segmented into two distinct "hub", a `privat` hub (via `vpn-edge`), and a `public` hub (via `reverse-proxy-edge`). this is where communication is restricted to point-to-point virtual links using `/30` subnets.
 
-\pagebreak
+the Alpine host functions as a silent switchboard; because interfaces are moved into namespaces, the host routing table remains pristine and unexploitable. this is also paired with granular traffic control, as each connection is a dedicated "virtual wire," precise `nftables` filtering is done at the hub level rather than relying on broad, automated firewall rules.
+
+| island | link name | hub end (IP) | spoke end (IP) | subnet | purpose |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **privat** | `veth-priv-git` | `10.0.1.1` | `10.0.1.2` | `10.0.1.0/30` | internal Git access via WireGuard |
+| **privat** | `veth-priv-nas` | `10.0.1.5` | `10.0.1.6` | `10.0.1.4/30` | internal NAS access via WireGuard |
+| **public** | `veth-pub-web`| `10.0.2.1` | `10.0.2.2` | `10.0.2.0/30` | inbound HTTP/HTTPS traffic |
+| **public** | `veth-pub-mc` | `10.0.2.5` | `10.0.2.6` | `10.0.2.4/30` | minecraft TCP stream (Port 25565) |
+
 ### topology
 ```
                     Internet (WAN)
@@ -150,11 +124,11 @@ read-only the cpu temperature, gpu temperature, disk usage, ram usage, uptime, n
                      ┌───┴─────────────────────────┐
          +-----------▼-----------+     +-----------▼-----------+
          | Host Bridge Interface |     | Host Bridge Interface |
-         |   (private network)   |     |    (public network)   |
+         |  (network `privat`)   |     |   (network `public`)  |
          +-----------┬-----------+     +-----------┬-----------+
                      └┐                           ┌┘
        +--------------┼---------------------------┼--------------+
-       |              │       pod michel          │              |
+       |              │       module michel       │              |
        |  ┌───────────▼───────────┐   ┌───────────▼───────────┐  |
        |  │ WireGuard VPN (tun0)  │   │ Reverse Proxy (Caddy) │  |
        |  ╞═══════════════════════╡   ╞═══════════════════════╡  |
@@ -165,91 +139,100 @@ read-only the cpu temperature, gpu temperature, disk usage, ram usage, uptime, n
        |  │ + client ACLs         │   │ + header_down         │  |
        |  └───────────┬───────────┘   └───────────┬───────────┘  |
        +--------------┼---------------------------┼--------------+
-                    ┌─┘                           └─┐
-    +---------------┼-------------------------------┼---------------+
-    |               │     network namespace         │               |
-    |  +------------▼------------+     +------------▼------------+  |
-    |  | private pods            |     | public pods             |  |
-    |  ├-------------------------┤     ├-------------------------┤  |
-    |  | ┌─────────────────────┐ |     | ┌─────────────────────┐ |  |
-    |  | │ pod akitio          │ |     | │ pod frangisk        │ |  |
-    |  | ╞═════════════════════╡ |     | ╞═════════════════════╡ |  |
-    |  | │ + minecraft-server  │ |     | │ ↳ AppArmor          │ |  |
-    |  | │ + little-a-map      │ |     | │ ↳ seccomp           │ |  |
-    |  | │ + borg-backup       │ |     | │ ↳ read-only         │ |  |
-    |  | └─────────────────────┘ |     | │ ↳ least privelages  │ |  |
-    |  | ┌─────────────────────┐ |     | └─────────────────────┘ |  |
-    |  | │ + borg-backup       │ |     +-------------------------+  |
-    |  | │ pod eligius         │ |                                  |
-    |  | ╞═════════════════════╡ |                                  |
-    |  | │ + git-ssh           │ |                                  |
-    |  | │ + cgit-web          │ |                                  |
-    |  | └─────────────────────┘ |                                  |
-    |  | ┌─────────────────────┐ |                                  |
-    |  | │ pod isidore         │ |                                  |
-    |  | ╞═════════════════════╡ |                                  |
-    |  | │ + nas               │ |                                  |
-    |  | └─────────────────────┘ |                                  |
-    |  | ┌─────────────────────┐ |                                  |
-    |  | │ pod gavrilo         │ |                                  |
-    |  | ╞═════════════════════╡ |                                  |
-    |  | │ ↳ read-only         │ |                                  |
-    |  | │ + cctv              │ |                                  |
-    |  | └─────────────────────┘ |                                  |
-    |  +-------------------------+                                  |
-    +---------------------------------------------------------------+
+                    ┌─┘                          ┌┘
+    +---------------┼----------------------------┼--------------------------------------------+
+    |               │     network islands        │                                            |
+    |  +------------▼------------+  +------------▼------------+  +-------------------------+  |
+    |  | private island          |  | public island           |  | networkless containers  |  |
+    |  ├-------------------------┤  ├-------------------------┤  ├-------------------------┤  |
+    |  | ┌───────────────────────┼──┼─────────────────────────┼──┼───────────────────────┐ │  |
+    |  | │                                 module akitio                                 | │  |
+    |  | ╞═══════════════════════╬══╬═════════════════════════╬══╬═══════════════════════╡ |  |
+    |  | │ + minecraft-ttyd-rcon |  | + minecraft-server      │  | + minecraft-backup    | |  |
+    |  | │                       |  | + minecraft-map         │  |                       | |  |  
+    |  | └───────────────────────┼──┼─────────────────────────┼──┼───────────────────────┘ |  |
+    |  | ┌───────────────────────┼──┼───────────────────────┐ │  |                         │  |
+    |  | │                   module eligius                 | │  |                         │  |
+    |  | ╞═══════════════════════╬══╬═══════════════════════╡ │  |                         |  |
+    |  | │ + git-ssh             |  | + cgit-web            │ │  |                         |  |  
+    |  | └───────────────────────┼──┼───────────────────────┘ │  |                         |  |
+    |  | ┌─────────────────────┐ |  |                         |  |                         |  |
+    |  | │ module isidore      │ |  |                         |  |                         |  |
+    |  | ╞═════════════════════╡ |  |                         |  |                         |  |
+    |  | │ + nas-sftp          │ |  |                         |  |                         |  |
+    |  | └─────────────────────┘ |  |                         |  |                         |  |
+    |  |                         |  | ┌─────────────────────┐ |  |                         |  |
+    |  |                         |  | │ pod frangisk        │ |  |                         |  |
+    |  |                         |  | ╞═════════════════════╡ |  |                         |  |
+    |  |                         |  | │ + photography       │ |  |                         |  |
+    |  |                         |  | │ + weblog            │ |  |                         |  | 
+    |  |                         |  | └─────────────────────┘ |  |                         |  |       
+    |  +-------------------------+  +-------------------------+  +-------------------------+  |                            
+    +-----------------------------------------------------------------------------------------+
+```
+### routing
+```
+                              Internet (WAN)
+                                   │
+                         +---------▼---------+
+                         |     Host eth0     |   <-- Physical network interface (LAN/WAN)
+                         +---------┬---------+
+                        ┌──────────┴──────────┐                     
+                +-------▼-------+ OR  +-------▼-------+
+                |   veth-priv   |     |   veth-pub    |   <-- veth pairs (host side)
+                +-------┬-------+     +-------┬-------+
+                     ┌──┘                     └──┐                     
+         +-----------▼-----------+   +-----------▼-----------+
+         |    wireguard (tun0)   |   | http-rev-proxy (eth0) |   <-- module michel
+         +-----------┬-----------+   +-----------┬-----------+
+                     │                           │
+             +-------▼-------+           +-------▼-------+
+             | veth-vpn-con1 |           | veth-vpn-con2 |  
+             +-------┬-------+           +-------┬-------+
+                     │                           │
+         +-----------▼-----------+   +-----------▼-----------+
+         |   container 1 (eth0)  |   |   container 2 (eth0)  |   <-- Container interfaces
+         +-----------------------+   +-----------------------+
 ```
 
-\pagebreak
-### simple network
+## security
+### apparmor & seccomp
+the host only has 1 apk: Podman. therefore, the attack surface is extremely small, and a simple profile will suffice (/etc/apparmor/host.profile). 
 
+however, a few small additions for my system have been added:
+- `/zfs/storage` blacklisted;
+- need to check if i can disable containers from making their own networks
+
+### nftables
+`reverse-proxy blocks SSH, VPN, everything else besides HTTP(S) and MINECRAFT TCP? maybe, by default, blacklist *, whitelist some in containers: 
 ```
-                          Internet (WAN)
-                                │
-                      +---------▼---------+
-                      |    Host eth0      |   <-- Physical network interface (LAN/WAN)
-                      +---------┬---------+
-                                │
-                      +---------▼----------+
-                      |   Bridge Interface |  (e.g. podman1)
-                      +----┬---------┬-----+
-                           │         │
-             +-------------▼-+    +--▼-------------+
-             |     vethX     |    |     vethY      |   <-- veth pairs (host side)
-             +---------------+    +----------------+
-                   │                      │
-             +-----▼-----+          +-----▼-----+
-             |   eth0    |          |   eth0    |   <-- Container interfaces
-             |  (pod1)   |          |  (pod2)   |
-             +-----------+          +-----------+
+#!/usr/sbin/nft -f
+
+table inet filter {
+    chain input {
+        type filter hook input priority 0;
+        policy drop;
+
+        # allow loopback
+        iif lo accept
+
+        # allow established/related connections
+        ct state established,related accept
+
+        # everything else is dropped
+    }
+
+    chain forward {
+        type filter hook forward priority 0;
+        policy drop;
+    }
+
+    chain output {
+        type filter hook output priority 0;
+        policy accept;
+    }
+}
 ```
 
-\pagebreak
-### routing traffic through a vpn or reverse proxy in pod-michel
-```
-                          Internet (WAN)
-                              │   ▲
-					  +-------▼---┴-------+
-                      |    Host (eth0)    |
-                      +-------┬---▲-------+
-                              │   │
-					  +-------▼---┴-------+
-                      |       bridge      |
-                      +-------┬---▲-------+
-                              │   │
-					  +-------▼---┴-------+
-					  |      (veth0)      |
-                      +-------┬---▲-------+
-                              │   │
-					  +-------▼---┴-------+
-					  | wireguard  (tun0) | (or reverse proxy)
-                      +-------┬---▲-------+
-                              │   │
-					  +-------▼---┴-------+
-					  |      (veth1)      |
-                      +-------┬---▲-------+
-                              │   │
-					  +-------▼---┴-------+
-					  | pod akitio (eth0) |
-					  +-------------------+
- ```
+### fail2ban
+i think its best to run it on host, to protect from bandwidth dos attacks. the issue is, it needs to see caddy logs to see who's attacking. coz if i put it into `reverse-proxy-edge` container, it will successfully protect the container and other public containers from attacks, but not the host. (i think at least).
