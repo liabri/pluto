@@ -163,23 +163,23 @@ the Alpine host functions as a silent switchboard; because interfaces are moved 
 
 the network is invariant, i.e. the host does not route between containers. all WAN routing occurs inside the michel namespace, and container-container routing happens directly between them. a /31 subnet is being used as each veth interface exclusively acts point-to-point, therefore, there is no l2 bridging in `reverse-proxy-edge` and `vpn-edge`. all routes are exhaustively listed in the table below.
 
-| veth interface name         | endpoint A           | endpoint A ip   | endpoint B             | endpoint B ip   | subnet             |
-| --------------------------- | -------------------- | --------------- | ---------------------- | --------------- | ------------------ |
-| `host-pub`                  | `host`               | `192.168.100.0` | `reverse-proxy-edge`   | `192.168.100.1` | `192.168.100.0/31` |
-| `host-priv`                 | `host`               | `192.168.101.0` | `vpn-edge`             | `192.168.101.1` | `192.168.101.0/31` |
-| `pub-lbmt-darkroom`         | `reverse-proxy-edge` | `172.16.1.0`    | `lbmt-darkroom`        | `172.16.1.1`    | `172.16.1.0/31`    |
-| `pub-lbmt-weblog`           | `reverse-proxy-edge` | `172.16.2.0`    | `lbmt-weblog`          | `172.16.2.1`    | `172.16.2.0/31`    |
-| `pub-lbmt-shop`             | `reverse-proxy-edge` | `172.16.3.0`    | `lbmt-shop`            | `172.16.3.1`    | `172.16.3.0/31`    |
-| `priv-git-ssh`              | `vpn-edge`           | `10.1.1.0`      | `git-ssh`              | `10.1.1.1`      | `10.1.1.0/31`      |
-| `pub-git-web`               | `reverse-proxy-edge` | `172.16.4.0`    | `git-web`              | `172.16.4.1`    | `172.16.4.0/31`    |
-| `priv-master-ssh`           | `vpn-edge`           | `10.1.2.0`      | `master-ssh`           | `10.1.2.1`      | `10.1.2.0/31`      |
-| `priv-master-explorer-web`  | `vpn-edge`           | `10.1.3.0`      | `master-explorer-web`  | `10.1.3.1`      | `10.1.3.0/31`      |
-| `pub-minecraft-server`      | `reverse-proxy-edge` | `172.16.5.0`    | `minecraft-server`     | `172.16.5.1`    | `172.16.5.0/31`    |
-| `priv-minecraft-ttyd-rcon`  | `vpn-edge`           | `10.1.4.0`      | `minecraft-ttyd-rcon`  | `10.1.4.1`      | `10.1.4.0/31`      |
-| `pub-minecraft-map`         | `reverse-proxy-edge` | `172.16.6.0`    | `minecraft-map`        | `172.16.6.1`    | `172.16.6.0/31`    |
-| `priv-navidrome-server`     | `vpn-edge`           | `10.1.5.0`      | `navidrome-server`     | `10.1.5.1`      | `10.1.5.0/31`      |
-| `priv-navidrome-web-client` | `vpn-edge`           | `10.1.6.0`      | `navidrome-web-client` | `10.1.6.1`      | `10.1.6.0/31`      |
-| `navidrome-server-client`   | `navidrome-server`   | `10.254.1.0`    | `navidrome-web-client` | `10.254.1.1`    | `10.254.1.0/31`    |
+| veth interface name         | endpoint A           | endpoint A ip   | endpoint B             | endpoint B ip   | subnet |
+| --------------------------- | -------------------- | --------------- | ---------------------- | --------------- | ------ |
+| `host-pub`                  | `host`               | `192.168.100.0` | `reverse-proxy-edge`   | `192.168.100.1` | `/31`  |
+| `host-priv`                 | `host`               | `192.168.101.0` | `vpn-edge`             | `192.168.101.1` | `/31`  |
+| `pub-lbmt-darkroom`         | `reverse-proxy-edge` | `172.16.1.0`    | `lbmt-darkroom`        | `172.16.1.1`    | `/31`  |
+| `pub-lbmt-weblog`           | `reverse-proxy-edge` | `172.16.2.0`    | `lbmt-weblog`          | `172.16.2.1`    | `/31`  |
+| `pub-lbmt-shop`             | `reverse-proxy-edge` | `172.16.3.0`    | `lbmt-shop`            | `172.16.3.1`    | `/31`  |
+| `priv-git-ssh`              | `vpn-edge`           | `10.1.1.0`      | `git-ssh`              | `10.1.1.1`      | `/31`  |
+| `pub-git-web`               | `reverse-proxy-edge` | `172.16.4.0`    | `git-web`              | `172.16.4.1`    | `/31`  |
+| `priv-master-ssh`           | `vpn-edge`           | `10.1.2.0`      | `master-ssh`           | `10.1.2.1`      | `/31`  |
+| `priv-master-explorer-web`  | `vpn-edge`           | `10.1.3.0`      | `master-explorer-web`  | `10.1.3.1`      | `/31`  |
+| `pub-minecraft-server`      | `reverse-proxy-edge` | `172.16.5.0`    | `minecraft-server`     | `172.16.5.1`    | `/31`  |
+| `priv-minecraft-ttyd-rcon`  | `vpn-edge`           | `10.1.4.0`      | `minecraft-ttyd-rcon`  | `10.1.4.1`      | `/31`  |
+| `pub-minecraft-map`         | `reverse-proxy-edge` | `172.16.6.0`    | `minecraft-map`        | `172.16.6.1`    | `/31`  |
+| `priv-navidrome-server`     | `vpn-edge`           | `10.1.5.0`      | `navidrome-server`     | `10.1.5.1`      | `/31`  |
+| `priv-navidrome-web-client` | `vpn-edge`           | `10.1.6.0`      | `navidrome-web-client` | `10.1.6.1`      | `/31`  |
+| `navidrome-server-client`   | `navidrome-server`   | `10.254.1.0`    | `navidrome-web-client` | `10.254.1.1`    | `/31`  |
 
 ```
                     Internet (WAN)
@@ -258,20 +258,20 @@ the network is invariant, i.e. the host does not route between containers. all W
                          +---------┬---------+
                         ┌──────────┴──────────┐                     
                 +-------▼-------+ OR  +-------▼-------+
-                |   host-priv   |     |   host-pub    |   <-- veth pairs between host and michel
-                +-------┬-------+     +-------┬-------+
+                |   host-priv   |     |   host-pub    |   <-- veth pairs between 
+                +-------┬-------+     +-------┬-------+       host and michel
                    ┌────┘                     └────┐                     
      +-------------▼-------------+   +-------------▼-------------+
-     |     vpn-edge (tun0)       |   | reverse-proxy-edge (eth0) |   <-- veth interfaces in module michel
-     +-------------┬-------------+   +-------------┬-------------+
+     |     vpn-edge (tun0)       |   | reverse-proxy-edge (eth0) |   <-- veth interfaces 
+     +-------------┬-------------+   +-------------┬-------------+       in module michel
                    │                               │
-     +-------------▼-------------+   +-------------▼-------------+
-     |      priv-container1      |   |       pub-container2      |   <-- veth pairs between michel and other container
-     +-------------┬-------------+   +-------------┬-------------+
+     +-------------▼-------------+   +-------------▼-------------+      veth pairs between
+     |      priv-container1      |   |       pub-container2      |   <-- michel and other 
+     +-------------┬-------------+   +-------------┬-------------+       containers
                    │                               │
        +-----------▼-----------+       +-----------▼-----------+
-       |   container 1 (eth0)  |       |   container 2 (eth0)  |   <-- veth interfaces inside other containers
-       +-----------------------+       +-----------------------+
+       |   container 1 (eth0)  |       |   container 2 (eth0)  |   <-- veth interfaces inside 
+       +-----------------------+       +-----------------------+       other containers
 ```
 
 ## security
