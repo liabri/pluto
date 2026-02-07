@@ -30,7 +30,7 @@ the `akitio` module manages my personal modded minecraft world of the same name.
 
 ### cecilia
 the `cecilia` module serves a music server exposing the `opensubsonic` api and `navidrome` api, which is accessible via the `privat` network. further, a web client is also accessible via the `privat` network.
-**containers**: `navid-server`; `navid-web-client`.
+**containers**: `navid-server`; `navid-web`.
 
 ### gavrilo
 prospective name for cctv server
@@ -38,6 +38,7 @@ prospective name for cctv server
 ### genesius
 prospective name for radarr etccc, but im unsure. all netns owned in michel
 
+**table 1: containers**
 | container             | module   | depends on             | named-volume mounts          | host-bind mounts                        | notes
 | --------------------- | -------- | ---------------------- | ---------------------------- | --------------------------------------- | ------------------------------------------ |
 | `rproxy-edge`         | michel   |                        |                              |                                         |                                            |
@@ -45,7 +46,7 @@ prospective name for radarr etccc, but im unsure. all netns owned in michel
 | `lbmt-darkroom`       | frangisk |                        |                              |                                         | working tree of static site built into image |
 | `lbmt-weblog`         | frangisk |                        |                              |                                         | working tree of static site built into image |
 | `lbmt-shop`           | frangisk |                        | `lbmt-shop-database`         |                                         | working tree of site baked into image      |
-| `lbmt-shop-backup`    | frangisk | `lbmt-shop`            | `lbmt-shop-database`         | `/zfs/storage/fotografija/shop`         |                                            |
+| `lbmt-backup`         | frangisk | `lbmt-shop`            | `lbmt-shop-database`         | `/zfs/storage/fotografija/shop`         |                                            |
 | `git-ssh`             | eligius  |                        |                              | `/zfs/storage/git`                      |                                            |
 | `git-web`             | eligius  |                        |                              | `/zfs/storage/git`                      |                                            |
 | `zfs-ssh`             | isidore  |                        |                              | `/zfs/storage`                          |                                            |
@@ -56,7 +57,7 @@ prospective name for radarr etccc, but im unsure. all netns owned in michel
 | `mc-map`              | akitio   | `mc-server`            | `mc-working-tree`            |                                         |                                            |
 | `mc-backup`           | akitio   | `mc-server`            | `mc-rcon`, `mc-working-tree` | `/zfs/storage/loghob/minecraft/akitio/world`|                                        |
 | `navid-server`        | cecilia  |                        |                              | `/zfs/storage/muzika/library`           |                                            |
-| `navid-web-client`    | cecilia  | `navid-web-client`     |                              |                                         | using direct veth-pair to communicate w/ navid-server |
+| `navid-web`           | cecilia  | `navid-web`            |                              |                                         | using direct veth-pair to communicate w/ navid-server |
 
 
 ## images
@@ -159,10 +160,19 @@ this network architecture utilises a dual-hub, zero-trust model to enforce stric
 
 the Alpine host functions as a silent switchboard; because interfaces are moved into namespaces, the host routing table remains pristine and unexploitable. this is also paired with granular traffic control, as each connection is a dedicated "virtual wire," precise `nftables` filtering is done at the network level rather than relying on broad, automated firewall rules.
 
+**table 2: networking responsibility matrix**
+| connection path          | scope     | defined In        | method                         | access logic                                                                       |
+| :----------------------- | :-------- | :---------------- | :----------------------------- | :--------------------------------------------------------------------------------- |
+| satellite → lab (Local)  | Local LAN | `OpenWrt` (router)| static hostname / DNS override | the domain resolves to the internal host ip, directing users to `vpn-edge` or `rproxy-edge`. |
+| satellite → lab (Remote) | WAN       | Public DNS        | standard A-Record / CNAMEs     | the domain resolves to the public home ip, directing users to `vpn-edge` or `rproxy-edge`. |
+| container → container    | internal  | containers' netns | veth pairs                     | veth interfaces defined in containers' netns for a direct connection (see table 3).|
+| internet → lab           | public    | Public DNS        | standard A-Record / CNAMEs     | directs the general public to `rproxy-edge` for public modules.                    |
+
 ### topology
 
 the network is invariant, i.e. the host does not route between containers. all WAN routing occurs inside the michel namespace, and container-container routing happens directly between them. a /31 subnet is being used as each veth interface exclusively acts point-to-point, therefore, there is no l2 bridging in `rproxy-edge` and `vpn-edge`. all routes are exhaustively listed in the table below.
 
+**table 3: veth pairs**
 | veth interface name   | endpoint A     | endpoint A ip   | endpoint B      | endpoint B ip   | subnet |
 | --------------------- | -------------- | --------------- | --------------- | --------------- | ------ |
 | `host-pub`            | `host`         | `192.168.100.0` | `rproxy-edge`   | `192.168.100.1` | `/31`  |
