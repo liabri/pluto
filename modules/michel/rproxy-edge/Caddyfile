@@ -4,10 +4,19 @@
 #}
 
 {
-	debug
 	http_port 80
 	https_port 443
 	admin off
+
+	layer4 {
+		:25565 {
+			route {
+				proxy {
+					upstream 172.16.5.1:25565
+				}	
+			}
+		}
+	}
 }
 
 :80 {
@@ -17,15 +26,14 @@
 		reverse_proxy http://weblog:8080
 	}
 
+	# git-web
 	redir /git/ /git
 	handle_path /git* {
 		reverse_proxy http://cgit
 		file_server
 	}
 
-#	handle_path /dev
-#	handle_path /docs
-
+	# lbmt-darkroom
 	reverse_proxy http://172.16.1.1:8001
 }
 
