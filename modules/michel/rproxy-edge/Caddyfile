@@ -26,7 +26,7 @@
 #	handle_path /dev
 #	handle_path /docs
 
-	reverse_proxy http://photography
+	reverse_proxy http://172.16.1.1:8001
 }
 
 :443 {

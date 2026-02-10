@@ -4,11 +4,8 @@
 
 BASE="$HOME/modules/michel"
 
-podman run -d --replace --name http-reverse-proxy \
-	--network public \
-	-p 80:80 \
-	-p 443:443 \
-	-v "$BASE/http-reverse-proxy:/etc/caddy:ro" \
-	--ip 10.89.0.10 \
+podman run -d --replace --name rproxy-edge \
+	--network=none \
+	-v "$BASE/rproxy-edge:/etc/caddy:ro" \
 	localhost/caddy-reverse-proxy:latest \
 	run --config /etc/caddy/Caddyfile
