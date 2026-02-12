@@ -1,23 +1,21 @@
-FROM alpine:3.21.3
+FROM alpine:latest AS builder
 
+RUN apk add --no-cache \
+	openjdk21-jre \
+	gcompat \
+	libstdc++
+
+FROM scratch
 LABEL org.opencontainers.image.title="minecraft-server"
 LABEL org.opencontainers.image.authors="liabri"
 
-ARG JDK21_VERSION=21.0.6_p7-r0
-
-RUN apk add --no-cache openjdk21-jre${JAVA_VERSION:+=}${JAVA_VERSION} socat
-RUN addgroup -g 1000 operator && \
-	adduser -D -u 1000 -G operator operator
+COPY --from=builder /lib /lib
+COPY --from=builder /usr/lib /usr/lib
+COPY --from=builder /etc/passwd /etc/passwd
+COPY --from=builder /etc/group /etc/group
 
 WORKDIR /srv/minecraft
-RUN chown operator:operator /srv/minecraft
+USER 65534:65534
 
-COPY --chown=operator:operator entrypoint.sh /usr/local/bin/entrypoint.sh
-RUN chmod +x /usr/local/bin/entrypoint.sh
-
-USER operator
-EXPOSE 25565 
-# maybe temp? expose thru caddy reverse proxy or something.
-
-# initialise rcon socat bridge
-ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
+ENV PATH="/usr/lib/jvm/java-21-openjdk/bin:${PATH}"
+ENV JAVA_HOME="/usr/lib/jvm/openjdk-21"

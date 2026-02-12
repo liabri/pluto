@@ -1,9 +1,13 @@
 #!/bin/sh
-# Usage: plumb-con.sh <container-name>
+# Usage: plumb.sh <container-name>
+
+err() { printf '\033[31m[ERROR]\033[0m[plumb.sh] %s\n' "$*"; }
+inf() { printf '[INFO][plumb.sh] %s\n' "$*"; }
+ok() { printf '\033[32m[ OK ]\033[0m[plumb.sh] %s\n' "$*"; }
 
 # ensure root 
 if [ "$(id -u)" -ne 0 ]; then
-	echo "Error: This script must be run as a root."
+	log "Error: This script must be run as a root."
 	exit 1
 fi
 
@@ -18,7 +22,7 @@ PODMAN_USER="liam"
 
 container="$1"; sot="/home/liam/network.conf"; s=0
 [ -z "$container" ] && echo "Usage:: . $0 <container-name>" && return 1
-[ ! -f "$sot" ] && echo "$sot not found" && return 1
+[ ! -f "$sot" ] && err "$sot not found." && return 1
 
 while IFS= read -r l; do
 	case "$l" in ''|\#*) continue ;;
@@ -34,11 +38,11 @@ done < "$sot"
 # fetch pids of rootless containers (if host is present, there is no container pid)
 if [ "$NAME_A" != "host" ]; then
 	PID_A=$(su - "$PODMAN_USER" -c "podman inspect -f '{{.State.Pid}}' $NAME_A" 2>/dev/null)
-	if [ -z "$PID_A" ] || [ "$PID_A" -eq 0 ]; then echo "Error: $NAME_A not running."; exit 1; fi
+	if [ -z "$PID_A" ] || [ "$PID_A" -eq 0 ]; then err "Container $NAME_A not running."; exit 1; fi
 fi
 
 PID_B=$(su - "$PODMAN_USER" -c "podman inspect -f '{{.State.Pid}}' $NAME_B" 2>/dev/null)
-if [ -z "$PID_B" ] || [ "$PID_B" -eq 0 ]; then echo "Error: $NAME_B not running."; exit 1; fi
+if [ -z "$PID_B" ] || [ "$PID_B" -eq 0 ]; then err "Container $NAME_B not running."; exit 1; fi
 
 do_veth_pair() {
 	# generate temporary host-side handles to avoid collisions
@@ -47,14 +51,14 @@ do_veth_pair() {
 
 	# only plumb if the container does not have eth0
 	if nsenter -t "$PID_B" -n ip link show eth0 >/dev/null 2>&1; then
-		echo "$container already has eth0. Done."
+		inf "Container $NAME_B already has eth0. Done."
 		exit 0
 	fi
 	
 	# remove old plumbing
 	doas ip link del "$VETH_A" 2>/dev/null || true
 	
-	echo "Plumbing $NAME_A <-> $NAME_B..."
+	inf "Plumbing $NAME_A <-> $NAME_B..."
 	
 	#  birth the wire on the host
 	ip link add "$VETH_A" type veth peer name "veth0"
@@ -65,13 +69,13 @@ do_veth_pair() {
 		ip link set "$VETH_A" name "$INTERFACE_A"
 		ip addr add "$IP_A/31" dev "$INTERFACE_A"
 		ip link set "$INTERFACE_A" up
-		echo "Side A successfully configured on host as $INTERFACE_A"
+		inf "Side A successfully configured on host as $INTERFACE_A."
 	else
 		ip link set "$VETH_A" netns "$PID_A"
 		nsenter -t "$PID_A" -n ip link set "$VETH_A" name "$INTERFACE_A"
 		nsenter -t "$PID_A" -n ip addr add "$IP_A/31" dev "$INTERFACE_A"
 		nsenter -t "$PID_A" -n ip link set "$INTERFACE_A" up
-		echo "Side A successfully injected into $NAME_A as $INTERFACE_A"
+		inf "Side A successfully injected into container $NAME_A as $INTERFACE_A."
 	fi
 	
 	# inject & configure side b
@@ -80,7 +84,7 @@ do_veth_pair() {
 	nsenter -t "$PID_B" -n ip addr add "$IP_B/31" dev "$INTERFACE_B"
 	nsenter -t "$PID_B" -n ip link set "$INTERFACE_B" up
 	nsenter -t "$PID_B" -n ip route add default via "$IP_A"
-	echo "Side B successfully injected into $NAME_B as $INTERFACE_B"
+	inf "Side B successfully injected into $NAME_B as $INTERFACE_B."
 	
 	# routing
 	nsenter -t "$PID_B" -n ip route add default via "$IP_A" 2>/dev/null || true
@@ -92,12 +96,12 @@ do_veth_pair() {
 		nsenter -t "$PID_A" -n sysctl -w net.ipv4.ip_forward=1 >/dev/null
 	fi
 	
-	echo "Veth pair successfully created"
+	ok "Veth pair successfully created."
 }
 
 do_port_forward() {
 	if [ "$NAME_A" = "host" ] && [ -n "$PORTS" ]; then
-		echo "Poking holes for ports: $PORTS"
+		inf "Poking holes for ports: $PORTS."
 	
 		# ensure nat structure exists
 		nft add table ip nat 2>/dev/null
@@ -119,7 +123,7 @@ do_port_forward() {
 		# enable kernel forwarding
 		sysctl -w net.ipv4.ip_forward=1 >/dev/null
 
-		echo "Ports $PORTS successfully forwarded."
+		ok "Ports $PORTS successfully forwarded."
 	fi
 }
 
@@ -128,4 +132,4 @@ if [ "$NAME_A" = "host" ]; then
 	do_port_forward
 fi
 
-echo "Link $NAME_A <-> $NAME_B established."
+ok "Link $NAME_A <-> $NAME_B successfully established."
