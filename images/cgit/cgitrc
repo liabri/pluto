@@ -1,0 +1,47 @@
+virtual-root=/git
+
+css=/git/cgit.css
+logo=/git/cgit.svg
+favicon=/git/favicon.ico
+js=/git/cgit.js
+
+# prevents webcrawlers (like google) from indexing the site
+robots=noindex, nofollow
+
+remove-suffix=1
+repository-sort=age
+enable-git-config=1
+scan-hidden-path=1
+
+# about-filter=/usr/bin/md-renderer
+readme=:README.md
+default-context=about
+
+enable-commit-graph=1
+enable-http-clone=1
+enable-index-links=1
+enable-subject-links=1
+enable-log-linecount=1
+enable-log-filecount=1
+max-stats=year
+
+# large repo handling
+cache-size=1024
+max-commit-count=50
+summar-log=10
+
+# mimetypes
+mimetype.gif=image/gif
+mimetype.html=text/html
+mimetype.jpg=image/jpeg
+mimetype.jpeg=image/jpeg
+mimetype.pdf=application/pdf
+mimetype.png=image/png
+mimetype.svg=image/svg+xml
+
+# info
+root-desc=all my projects from 2017 until the present centralised in one place.
+root-title=liabri's git directory
+# footer=this was awful to get up and running
+
+scan-path=/srv/git

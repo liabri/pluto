@@ -1,23 +1,22 @@
 #!/bin/sh
 
-BASE="$HOME/modules/eligius"
-GIT_DIR="$BASE/storage/git"
-
-# ensure containers have permission to found git folder
-podman unshare chown -R 1000:1000 "$BASE/git"
-
-# cgit container -- this allows someone to view the repositories
-podman run --replace -d --name cgit \
-	--network=public
-	-v "$BASE/cgit/var:/var:ro" \
-	-v "$BASE/cgit/etc/cgitrc:/etc/cgitrc:ro" \
-	-v "$GIT_DIR:/home/git/repos:ro" \
-	localhost/cgit:latest \
-	-D -f /etc/lighttpd/lighttpd.conf
+GIT_DIR="$HOME/storage/git"
 
 # git-ssh container -- this allows someone to interact with the repository
-podman run --replace -d --name git-ssh \
-	--network=privat
-	-v "$GIT_DIR:/home/git/repos:rw" \
-	-v "$BASE/git-ssh/authorized_keys:/home/git/.ssh/authorized_keys:ro \
-	localhost/git-ssh:latest
+#podman run --replace -d --name git-ssh \
+#	--network=privat
+#	-v "$GIT_DIR:/home/git/repos:rw" \
+#	-v "$BASE/git-ssh/authorized_keys:/home/git/.ssh/authorized_keys:ro \
+#	localhost/git-ssh:latest
+
+set -eux
+
+# cgit
+# doas podman unshare chown -R 4001:4000 "$GIT_DIR"
+podman run --replace -d --name git-web \
+	--network=none \
+	-u 4001:4000 \
+	-v "$GIT_DIR":/srv/git:ro \
+	localhost/cgit:latest
+
+doas sh "$HOME/scripts/plumb.sh" git-web

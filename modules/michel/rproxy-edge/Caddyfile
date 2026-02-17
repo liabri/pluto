@@ -20,21 +20,17 @@
 }
 
 :80 {
-	uri strip_suffix "/" 
-	redir /weblog/ /weblog
-	handle_path /weblog* {
-		reverse_proxy http://weblog:8080
-	}
+	# uri strip_suffix "/" 
 
 	# git-web
 	redir /git/ /git
-	handle_path /git* {
-		reverse_proxy http://cgit
-		file_server
+	handle /git* {
+#		rewrite * /cgit.cgi{uri}
+		reverse_proxy http://172.16.4.1:8080
 	}
 
 	# lbmt-darkroom
-	reverse_proxy http://172.16.1.1:8001
+	reverse_proxy http://172.16.1.1:8080
 }
 
 :443 {

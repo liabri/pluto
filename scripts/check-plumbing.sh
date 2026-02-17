@@ -7,7 +7,7 @@ if [ $# -gt 0 ]; then
 fi
 
 # check veth interfaces inside rproxy-edge (public) container
-echo "Interfaces inside container"
+echo "Interfaces inside rproxy-edge"
 _pid=$(podman inspect -f '{{.State.Pid}}' rproxy-edge)
 doas nsenter -t "$_pid" -n ip addr show
 
