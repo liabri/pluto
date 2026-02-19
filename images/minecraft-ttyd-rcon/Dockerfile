@@ -1,21 +1,20 @@
 # build binary
 FROM alpine:latest AS builder
 
-# get mcrcon
-RUN apk add --no-cache ttyd rcon-cli socat
+RUN apk add --no-cache go
+RUN CGO_ENABLED=0 go install github.com/sorenisanerd/gotty@latest
 
-RUN addgroup -g 1000 operator && \
-	adduser -D -u 1000 -G operator operator
+WORKDIR /app
+RUN go mod init ttyd-wrapper && \
+	go get github.com/gorcon/rcon
+COPY wrapper.go .
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o wrapper wrapper.go
 
-COPY ttyd-wrapper.sh /usr/local/bin/ttyd-wrapper
-RUN chmod +x /usr/local/bin/ttyd-wrapper
+FROM scratch
 
-USER operator
+COPY --from=builder /etc/passwd /etc/passwd
+COPY --from=builder /root/go/bin/gotty /usr/local/bin/gotty
+COPY --from=builder /app/wrapper /usr/local/bin/wrapper
 
-# ttyd port
-EXPOSE 7681
-
-# start ttyd
-# -i eth0 ensures it listens on the container's network interface
-# /usr/local/bin/ttyd-wrapper: the only command the user can execute
-ENTRYPOINT ["ttyd", "-p", "7681", "-t", "scrollback=100000", "--writable", "/usr/local/bin/ttyd-wrapper"]
+USER 65534
+ENTRYPOINT ["/usr/local/bin/gotty", "-p", "8080", "--path", "/rcon", "-w", "/usr/local/bin/wrapper"] 
