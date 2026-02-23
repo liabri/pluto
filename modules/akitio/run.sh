@@ -19,8 +19,6 @@ podman volume create \
 	>/dev/null
 ok "mc-rcon-ipc" "Volume is available."
 
-
-
 # if mc-working-tree named-volume is not created, create it.
 if ! podman volume exists mc-working-tree; then 
 	podman volume create --driver local mc-working-tree >/dev/null
@@ -37,6 +35,16 @@ podman unshare chown -R 65534:65534 "$WORKING_TREE_PATH"
 podman unshare find "$WORKING_TREE_PATH" -type d -exec chmod 2755 {} +
 podman unshare find "$WORKING_TREE_PATH" -type f -exec chmod 664 {} +
 
+# sidecar container which loads latest ver of world into volume mc-working-tree from WORLD_DIR (which is a borg repo)
+podman run --replace -d -it --name mc-world-pull \
+	--network=none \
+	-u 65534:65534 \
+	-v mc-working-tree:/srv/minecraft:rw \
+	-v "$WORLD_DIR:/repo":rw,U \
+	localhost/minecraft-world-pull:latest \
+	>/dev/null
+ok "mc-world-pull" "Container is running"
+
 # run minecraft-server
 podman run --replace -d -it --name mc-server \
 	--network=none \
@@ -52,21 +60,6 @@ ok "mc-server" "Container is running."
 
 doas sh "$HOME/scripts/plumb.sh" mc-server
 
-# sidecar container which loads latest ver of world into volume mc-working-tree
-#podman run --replace -d -it --name mc-backup \
-#	--network=none \
-#	-u 65534:65534 \
-#	-v mc-working-tree:/srv/minecraft:rw \
-#	-v "$WORLD_DIR:/repo:rw \
-#	-e BORG_REPO	
-
-# sidecar container which exposes rcon-ip to the mc-server container 
-#podman run --replace -d -it --name mc-rcon-side \
-#	--network=none \
-#	--user 65532:65532 \
-	
-#./plumb.sh mc-rcon-side
-
 # run web terminal (ttyd using rcon-cli, ipc via unix sockets) might need to do some weird --mount stuff instead of -v to mount only mc-working-tree/logs
 podman run --replace -d -it --name mc-ttyd-rcon \
 	--network=none \
@@ -77,3 +70,14 @@ podman run --replace -d -it --name mc-ttyd-rcon \
 	>/dev/null
 ok "mc-ttyd-rcon" "Container is running."
 doas sh "$HOME/scripts/plumb.sh" mc-ttyd-rcon
+
+# run borg backup everyday at 5am via superchronic inside container
+#podman run --replace -d -it --name mc-backup \
+#	--network=none \
+#	-v "$WORLD_DIR:/repo":rw,U \
+#	--volumes-from mc-server \
+#	--mount type=volume,source=mc-working-tree,target=/data,ro=true,subpath=world \
+#	-e RCON_PASSWORD="$RCON_PASSWORD" \
+#	localhost/minecraft-borg-backup:latest \
+#	>/dev/null
+#ok "mc-backup" "Container is running."
