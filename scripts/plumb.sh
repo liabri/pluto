@@ -56,7 +56,7 @@ do_veth_pair() {
 	fi
 	
 	# remove old plumbing
-	doas ip link del "$VETH_A" 2>/dev/null || true
+	ip link del "$VETH_A" 2>/dev/null || true
 	
 	inf "Plumbing $NAME_A <-> $NAME_B..."
 	
