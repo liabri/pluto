@@ -36,6 +36,10 @@
 	handle /rcon* {
 		reverse_proxy http://10.1.4.1:8080
 	}
+	handle /editor* {
+		reverse_proxy http://10.1.7.1:8080
+	}
+
 
 	# lbmt-darkroom
 	reverse_proxy http://172.16.1.1:8080
