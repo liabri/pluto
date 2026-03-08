@@ -1,58 +1,108 @@
 package main
 
-import("bytes"; "log"; "fmt"; "io"; "time"; "os"; "os/exec"; "net/http"; "net/http/httputil"; "net/url"; "strings"; "path/filepath")
+// to do: 
+// output/*.html need to ne able to update, browser caching causes issues with this
+// nice file explorer
+
+import("bytes"; "log"; "fmt"; "io"; "html/template"; "time"; "os"; "os/exec"; "net/http"; "net/http/httputil"; "net/url"; "strings"; "path/filepath")
 
 const (
-	SWS_ADDR = "http://localhost:8081" // this server
-	PREVIEW_ADDR = "http:/10.254.2.1:8080" // the preview server 
-	DATA_DIR = "/data/" // mounted volume with docs
+	SWS_ADDR = "http://localhost:8081" // the server at /public
+	DATA_DIR = "/docs/" // mounted volume with docs
 )
 
+// pull the proxy prefix from the environment (e.g. "/editor")
+var SITE_ROOT = os.Getenv("SITE_ROOT")
+
 func main() {
-	// check /public
-	filepath.Walk("/public", func(p string, i os.FileInfo, e error) error { 
-		fmt.Printf("%v %v %v\n", i.Mode(), i.Size(), p); return nil })
-	
+	entries, err := os.ReadDir("/public/output")
+	if err != nil { panic(err) }
+	for _, entry := range entries { fmt.Println(entry.Name()) }
+
 	startCodeMirror()
 
 	target, _ := url.Parse(SWS_ADDR)
 	proxy := httputil.NewSingleHostReverseProxy(target)
 
+	// all traffic must pass through here
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		path := r.URL.Path
-		ext := filepath.Ext(path)
-
-		if strings.Contains(path, "/api/") { handleAPI(w,r); return}
-
-		if ext == "" || ext == ".html" {
-			log.Printf("UI SERVING HTML FOR %s", path)
-			serveUI(w, r)
-			return
-		}
-
-		// assets: strip prefix (e.g. editor/js/bundle.js -> /js/bundle.js)
-		segments := strings.Split(strings.Trim(path, "/"), "/")
-		if len(segments) >=2 {
-			r.URL.Path = "/" + strings.Join(segments[len(segments)-2:], "/")
-		}
+		ext := filepath.Ext(r.URL.Path)
+		log.Printf("FOR PATH: %s, THE EXT IS: %s", r.URL.Path, ext)
 	
-		// let sws handle js/css, we want html only
+		// api calls, /load or /save. this is exclusively to read/write respectively files in /data	
+		if strings.Contains(r.URL.Path, "/api/") { handleAPI(w,r); return }
+
+		// editor ui, only shown when a file is open (that we want to edit) a.k.a. when path has query "?file=<filename>" 
+		if r.URL.Query().Get("file") != "" { serveEditorUI(w, r); return }
+
+		// custom file explorer
+		if r.URL.Path==SITE_ROOT { log.Println("BOOOOO!!!! !SERVING EXPLORRERRRR!!"); serveFileExplorer(w, r); return }
+
+		// normalise path by striping prefix (e.g. editor/js/bundle.js -> /js/bundle.js)
+		if SITE_ROOT != "" && strings.HasPrefix(r.URL.Path, SITE_ROOT) {
+			r.URL.Path = strings.TrimPrefix(r.URL.Path, SITE_ROOT)
+			if r.URL.Path == "" { r.URL.Path = "/" } // ensures empty paths resolve to SWS root
+		}
+
+		// proxy the remaining requests through to the SWS server
 		proxy.ServeHTTP(w, r)
 
 	})
 
-	log.Println("Orchestrator active on port 8080")
+	log.Println("Orchestrator server active on port 8080")
 	if err := http.ListenAndServe(":8080", nil); err != nil { log.Fatalf("Server failed: %v", err) }	
 }
 
-// --- serve ui (possibly w/ preview server injection) ---
-func serveUI(w http.ResponseWriter, r *http.Request) {
-	// fetch index.html template from sws and inject preview if needed
-	resp, err := http.Get(SWS_ADDR + "/index.html")
-	if err != nil { http.Error(w, "HTML template unreachable", http.StatusBadGateway); return }
-	defer resp.Body.Close()
+// --- serve file explorer ---
+func serveFileExplorer(w http.ResponseWriter, r *http.Request) {
+	// define data structures to pass into html
+	type FileItem struct {
+		Name		string
+		EscapedName	string
+		ModTime		string
+	}
+	type PageData struct {
+		DataDir string
+		Files 	[]FileItem
+	}
 
-	body, err := io.ReadAll(resp.Body)
+	// populate the data
+	entries, err := os.ReadDir(DATA_DIR)
+	if err != nil { http.Error(w, "Failed to read data directory", http.StatusInternalServerError); return }
+
+	var data PageData
+	data.DataDir = DATA_DIR
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			info, err := entry.Info()
+			dateStr := "Unknown date"
+			if err == nil { dateStr = info.ModTime().Format("Jan 02, 2006 15:04") }
+
+			data.Files = append(data.Files, FileItem {
+				Name:		entry.Name(),
+				EscapedName:	url.QueryEscape(entry.Name()),
+				ModTime:	dateStr,
+			})
+		}
+	}
+
+	// write to html template using {{.Tags}}
+	tmpl, err := template.ParseFiles("/public/explorer.html")
+	if err != nil { log.Printf("Explorer template error: %v", err); http.Error(w, "Explorer template error", http.StatusInternalServerError); return }
+
+	w.Header().Set("Content-Type", "text/html")
+	if err := tmpl.Execute(w, data); err != nil { log.Printf("Error executing template: %v", err) }	
+}
+
+// --- serve ui (possibly w/ preview injection) ---
+func serveEditorUI(w http.ResponseWriter, r *http.Request) {
+	// fetch index.html template from sws and inject preview if needed
+//	resp, err := http.Get(SWS_ADDR + "/index.html")
+//	if err != nil { http.Error(w, "HTML template unreachable", http.StatusBadGateway); return }
+//	defer resp.Body.Close()
+//	body, err := io.ReadAll(resp.Body)
+
+	body, err := os.ReadFile("/public/index.html")
 	if err != nil { http.Error(w, "Failed to read HTML template", http.StatusInternalServerError); return }
 
 	// build base tag for index.html
@@ -61,21 +111,22 @@ func serveUI(w http.ResponseWriter, r *http.Request) {
 	baseTag := fmt.Sprintf(`<base href="%s">`, prefix)
 
 	// editor html w/o preview pane
-	filename := r.URL.Query().Get("file")
 	ui := `<div id="editor" style="height:100vh;"></div>`
 
 	// editor html w/ preview pane
-	isQmd := strings.HasSuffix(r.URL.Query().Get("file"), ".qmd")
-	if isQmd {
-		previewFile := strings.TrimSuffix(filename, ".qmd") + ".html" // this assumes quarto renders filename.qmd to filename.html
+	filename := r.URL.Query().Get("file")
+	hasPreview := strings.HasSuffix(filename, ".qmd")
+	if hasPreview {
+		// need to make option to preview pdf too
+		previewFile := filepath.Join("output", strings.TrimSuffix(filename, ".qmd") + ".html")
 		ui = fmt.Sprintf(`
 			<div style="display:flex; height:100vh; width:100vw;">
 				<div id="editor" style="flex:1; border-right:2px solid #333; overflow: auto;"></div>
-				<iframe src="%s/%s" style="flex:1; border:none;"></iframe>
-			</div>`, PREVIEW_ADDR, previewFile)
+				<iframe src="%s" style="flex:1; border:none;"></iframe>
+			</div>`, previewFile)
 	}
 	
-	// replace the placeholder in index.html with our dynamic UI
+	// replace the placeholders in index.html with our base tag and dynamic UI
 	out := bytes.Replace(body, []byte("{{.BaseTag}}"), []byte(baseTag), 1) 
 	out = bytes.Replace(out, []byte("{{.EditorUI}}"), []byte(ui), 1)
 
@@ -88,8 +139,6 @@ func handleAPI(w http.ResponseWriter, r *http.Request) {
 	filename := r.URL.Query().Get("file")
 	if filename == "" { http.Error(w, "Filename required", 400); return }
 	path := DATA_DIR + filename
-
-	log.Printf("LOOKING FOR FILE: %s", path)
 
 	switch {
 
@@ -117,6 +166,7 @@ func startCodeMirror() {
 		"--port", "8081",
 		"--root", "/public",
 		"--log-level", "info",
+		"--directory-listing", "true",
 	)
 
 	cmd.Stdout = os.Stdout

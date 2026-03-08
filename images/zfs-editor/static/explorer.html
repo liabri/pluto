@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<title>liabri's editor explorer</title>
+	<style>
+		body { 
+			margin: 0; 
+			padding: 40px 20px;
+			font-family: system-ui, -apple-system, sans-serif;
+			color: #cccccc;
+			background: #111111; 
+		}
+	
+		.container {
+			max-width: 800px;
+			margin: 0 auto;
+			border: 1px solid #444;
+		}
+
+		h1 {
+			margin: 0;
+			font-size: 1rem;
+			font-weight: normal;
+			padding: 12px 16px;
+			background: #222222;
+			color: #eeeeee;
+			border-bottom: 1px solid #444;
+			letter-spacing: 0.5px;
+		}
+
+		ul {
+			list-style: none;
+			padding: 0;
+			margin: 0;
+			font-family: monospace;
+		}
+
+		li {
+			font-size: 0.9rem;
+			border-bottom: 1px solid #2a2a2a;
+		}
+		li:last-child { border-bottom: none; }
+
+		/* zebra stripes for rows */
+		li:nth-child(odd) { background: #1a1a1a; }
+		li: nth-child(even) { background: #222222; }
+
+		a {
+			text-decoration: none;
+			color: #cccccc;
+			display: flex;
+			padding: 10px 16px;
+		}
+
+		a:hover {
+			background: #333333;
+		}
+
+		a:hover .filename {
+			color: #ffffff;
+		}
+
+		.filename {
+			flex: 1; /* pushes the date to the far right */
+			color: #dddddd;
+		}
+
+		.file-date {
+			color: #777777;
+			font-size: 0.85rem;
+		}
+
+		.empty {
+			padding: 16px;
+			color: #777777;
+			font-style: italic;
+			text-align: center;
+		}
+	</style>
+</head>
+<body>
+	<div class="container">
+		<h1>{{.DataDir}}</h1>
+		<ul>
+			{{range .Files}}
+				<li>
+					<a href="?file={{.EscapedName}}">
+						<span class="filename">{{.Name}}</span>
+						<span class="file-date">{{.ModTime}}</span>
+					</a>
+				</li>
+			{{else}}
+				<li class="empty">No files found in {{.DataDir}}</li>
+			{{end}}
+		</ul>
+	</div>
+</body>
+</html>

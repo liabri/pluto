@@ -22,6 +22,6 @@ USER 65533:65533
 COPY --from=builder /build/bundle.js ./js/bundle.js
 COPY --from=builder /build/orchestrator /usr/bin/orchestrator
 COPY ./static/index.html .
+COPY ./static/explorer.html .
 ENTRYPOINT [""]
 CMD ["/usr/bin/orchestrator"]
-

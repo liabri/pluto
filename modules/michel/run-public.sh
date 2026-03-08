@@ -7,6 +7,7 @@ podman run -d --replace --name rproxy-edge \
 	-v "$BASE/rproxy-edge:/etc/caddy:ro" \
 	--cap-add=NET_BIND_SERVICE \
 	localhost/caddy-reverse-proxy:latest \
-	run --config /etc/caddy/Caddyfile
+	run --config /etc/caddy/Caddyfile \ 
+	>/dev/null
 
 doas sh "$HOME/scripts/plumb.sh" rproxy-edge
