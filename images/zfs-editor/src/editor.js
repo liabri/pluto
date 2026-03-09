@@ -13,13 +13,13 @@ const saveFile = async (view, filename) => {
 		});
 		if (response.ok) {
 			console.log(`Successfully saved: ${filename}`);
+			updatePreview();
 		}
 	} catch (err) {
 		console.error("Saving of file failed:", err);
 	}
 	return true;
 };
-
 
 document.addEventListener("DOMContentLoaded", async () => {
 	const params = new URLSearchParams(window.location.search);
@@ -57,3 +57,26 @@ document.addEventListener("DOMContentLoaded", async () => {
 		console.error("Loading of file failed:", e)
 	}
 });
+
+lastModified = null;
+async function updatePreview() {
+	const iframe = document.querySelector("iframe");
+	const url = new URL(iframe.src);
+
+	const res = await fetch(url, { method: "HEAD", cache: "no-store" });
+	lastModified = res.headers.get("Last-Modified");
+
+	// start polling
+	const poll = setInterval(async () => {
+		const res = await fetch(url, { method: "HEAD", cache: "no-store" });
+		const mod = res.headers.get("Last-Modified");
+
+		if (mod && mod !== lastModified) {
+			// file updated, therefore reload iframe
+			url.searchParams.set("t", Date.now()); // cache-bust
+			iframe.src = url.toString();
+
+			clearInterval(poll);
+		}
+	}, 500);
+}

@@ -130,6 +130,9 @@ func serveEditorUI(w http.ResponseWriter, r *http.Request) {
 	out := bytes.Replace(body, []byte("{{.BaseTag}}"), []byte(baseTag), 1) 
 	out = bytes.Replace(out, []byte("{{.EditorUI}}"), []byte(ui), 1)
 
+	w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+	w.Header().Set("Pragma", "no-cache")
+	w.Header().Set("Expires", "0")
 	w.Header().Set("Content-Type", "text/html")
 	w.Write(out)
 

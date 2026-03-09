@@ -19,7 +19,7 @@ watchexec --emit-events-to=environment -r -e qmd ' \
 	echo "Rendering $WATCHEXEC_COMMON_PATH/$WATCHEXEC_WRITTEN_PATH"; \
 	cp /$WATCHEXEC_COMMON_PATH/$WATCHEXEC_WRITTEN_PATH /tmp/build/$WATCHEXEC_WRITTEN_PATH; \
 	cp _quarto.yml /tmp/build/_quarto.yml; \
-	quarto render /tmp/build/$WATCHEXEC_WRITTEN_PATH; \
+	quarto render /tmp/build/$WATCHEXEC_WRITTEN_PATH --to html; \
 	echo "MAKING $WATCHEXEC_COMMON_PATH/output"; \
 	cp /tmp/build/output/*.html $WATCHEXEC_COMMON_PATH/output/; \
 	cp /tmp/build/output/*.pdf $WATCHEXEC_COMMON_PATH/output/; \
