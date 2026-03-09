@@ -15,19 +15,13 @@ const (
 var SITE_ROOT = os.Getenv("SITE_ROOT")
 
 func main() {
-	entries, err := os.ReadDir("/public/output")
-	if err != nil { panic(err) }
-	for _, entry := range entries { fmt.Println(entry.Name()) }
-
 	startCodeMirror()
-
 	target, _ := url.Parse(SWS_ADDR)
 	proxy := httputil.NewSingleHostReverseProxy(target)
 
 	// all traffic must pass through here
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		ext := filepath.Ext(r.URL.Path)
-		log.Printf("FOR PATH: %s, THE EXT IS: %s", r.URL.Path, ext)
+//		ext := filepath.Ext(r.URL.Path)
 	
 		// api calls, /load or /save. this is exclusively to read/write respectively files in /data	
 		if strings.Contains(r.URL.Path, "/api/") { handleAPI(w,r); return }
@@ -36,7 +30,7 @@ func main() {
 		if r.URL.Query().Get("file") != "" { serveEditorUI(w, r); return }
 
 		// custom file explorer
-		if r.URL.Path==SITE_ROOT { log.Println("BOOOOO!!!! !SERVING EXPLORRERRRR!!"); serveFileExplorer(w, r); return }
+		if r.URL.Path==SITE_ROOT { serveFileExplorer(w, r); return }
 
 		// normalise path by striping prefix (e.g. editor/js/bundle.js -> /js/bundle.js)
 		if SITE_ROOT != "" && strings.HasPrefix(r.URL.Path, SITE_ROOT) {
@@ -58,32 +52,67 @@ func serveFileExplorer(w http.ResponseWriter, r *http.Request) {
 	// define data structures to pass into html
 	type FileItem struct {
 		Name		string
-		EscapedName	string
+		EscapedPath	string
 		ModTime		string
+		IsDir		bool
 	}
 	type PageData struct {
-		DataDir string
+		CurrentDir string
 		Files 	[]FileItem
 	}
 
-	// populate the data
-	entries, err := os.ReadDir(DATA_DIR)
-	if err != nil { http.Error(w, "Failed to read data directory", http.StatusInternalServerError); return }
+	reqDir := r.URL.Query().Get("dir")
+	targetPath := filepath.Join(DATA_DIR, reqDir)
+
+	// security check 
+	rel, err := filepath.Rel(DATA_DIR, targetPath)
+	if err != nil || strings.HasPrefix(rel, "..") { http.Error(w, "Invalid directory", http.StatusForbidden); return }
+
+	safeDir := filepath.ToSlash(rel)
+	if safeDir == "." { safeDir = "" }
+
+	// read dir
+	entries, err := os.ReadDir(targetPath)
+	if err != nil { log.Printf("Failed to read directory at %s: %v", targetPath, err); http.Error(w, "Failed to read directory", http.StatusInternalServerError); return }
 
 	var data PageData
-	data.DataDir = DATA_DIR
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			info, err := entry.Info()
-			dateStr := "Unknown date"
-			if err == nil { dateStr = info.ModTime().Format("Jan 02, 2006 15:04") }
+	data.CurrentDir = safeDir
+	if data.CurrentDir == "" { data.CurrentDir = "/" } else { data.CurrentDir = "/" + data.CurrentDir }
 
-			data.Files = append(data.Files, FileItem {
-				Name:		entry.Name(),
-				EscapedName:	url.QueryEscape(entry.Name()),
-				ModTime:	dateStr,
-			})
-		}
+	// add the ../ previous directory link if we are not in root
+	if safeDir != "" {
+		parentDir := filepath.ToSlash(filepath.Dir(safeDir))
+		if parentDir == "." { parentDir = "" }
+		data.Files = append(data.Files, FileItem {
+			Name:		"../",
+			EscapedPath:	parentDir,
+			ModTime:	"",
+			IsDir:		true,
+		})
+	}
+
+	// populate the data
+	for _, entry := range entries {
+		if strings.HasPrefix(entry.Name(), ".") { continue }
+		if entry.IsDir() && entry.Name() == "output" { continue }		
+
+		info, err := entry.Info()
+		dateStr := "Unknown date"
+		if err == nil { dateStr = info.ModTime().Format("Jan 02, 2006 15:04") }
+
+		// build the relative path for the url (e.g. "folder/file.txt")
+		relPath := entry.Name()
+		if safeDir != "" { relPath = filepath.Join(safeDir, entry.Name()) }
+
+		displayName := entry.Name()
+		if entry.IsDir() { displayName += "/" }
+
+		data.Files = append(data.Files, FileItem {
+			Name:		entry.Name(),
+			EscapedPath:	relPath,
+			ModTime:	dateStr,
+			IsDir:		entry.IsDir(),
+		})
 	}
 
 	// write to html template using {{.Tags}}

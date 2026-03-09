@@ -70,6 +70,11 @@
 			font-size: 0.85rem;
 		}
 
+		.is-dir {
+			color: #88ccff;
+			font-weight: bold;
+		}
+
 		.empty {
 			padding: 16px;
 			color: #777777;
@@ -80,17 +85,17 @@
 </head>
 <body>
 	<div class="container">
-		<h1>{{.DataDir}}</h1>
+		<h1>Index of {{.CurrentDir}}</h1>
 		<ul>
 			{{range .Files}}
 				<li>
-					<a href="?file={{.EscapedName}}">
-						<span class="filename">{{.Name}}</span>
-						<span class="file-date">{{.ModTime}}</span>
+					<a href="{{if .IsDir}}?dir={{else}}?file={{end}}{{.EscapedPath}}">
+						<span class="filename {{if .IsDir}}is-dir{{end}}">{{.Name}}</span>
+						<span class="file-data">{{.ModTime}}</span>
 					</a>
 				</li>
 			{{else}}
-				<li class="empty">No files found in {{.DataDir}}</li>
+				<li class="empty">No files found in {{.CurrentDir}}</li>
 			{{end}}
 		</ul>
 	</div>
