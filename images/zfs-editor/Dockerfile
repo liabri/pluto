@@ -23,5 +23,6 @@ COPY --from=builder /build/bundle.js ./js/bundle.js
 COPY --from=builder /build/orchestrator /usr/bin/orchestrator
 COPY ./static/index.html .
 COPY ./static/explorer.html .
+COPY ./static/pdf-viewer.html .
 ENTRYPOINT [""]
 CMD ["/usr/bin/orchestrator"]

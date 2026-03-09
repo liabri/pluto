@@ -55,6 +55,8 @@ func serveFileExplorer(w http.ResponseWriter, r *http.Request) {
 		EscapedPath	string
 		ModTime		string
 		IsDir		bool
+		HasPdf		bool
+		PdfPath		string
 	}
 	type PageData struct {
 		CurrentDir string
@@ -88,7 +90,22 @@ func serveFileExplorer(w http.ResponseWriter, r *http.Request) {
 			EscapedPath:	parentDir,
 			ModTime:	"",
 			IsDir:		true,
+			HasPdf:		false,
+			PdfPath:	"",
 		})
+	}
+
+	// check for pdf in /output
+	findMatchingPdf := func(fileName string, isDir bool) (bool, string) {
+		if !isDir {
+			nameSansExt := fileName
+			if dotIdx := strings.LastIndex(fileName, "."); dotIdx != -1 { nameSansExt = fileName[:dotIdx] }
+			prospectivePdfName := nameSansExt + ".pdf"
+			pdfDiskPath := filepath.Join("output", prospectivePdfName)
+			if _, err := os.Stat(pdfDiskPath); err == nil { return true, SITE_ROOT + pdfDiskPath }
+		}
+
+		return false, ""
 	}
 
 	// populate the data
@@ -107,16 +124,20 @@ func serveFileExplorer(w http.ResponseWriter, r *http.Request) {
 		displayName := entry.Name()
 		if entry.IsDir() { displayName += "/" }
 
+		hasPdf, pdfUrl := findMatchingPdf(entry.Name(), entry.IsDir())
+
 		data.Files = append(data.Files, FileItem {
 			Name:		entry.Name(),
 			EscapedPath:	relPath,
 			ModTime:	dateStr,
 			IsDir:		entry.IsDir(),
+			HasPdf:		hasPdf,
+			PdfPath:	pdfUrl,
 		})
 	}
 
 	// write to html template using {{.Tags}}
-	tmpl, err := template.ParseFiles("/public/explorer.html")
+	tmpl, err := template.ParseFiles("/public/explorer.html", "/public/pdf-viewer.html")
 	if err != nil { log.Printf("Explorer template error: %v", err); http.Error(w, "Explorer template error", http.StatusInternalServerError); return }
 
 	w.Header().Set("Content-Type", "text/html")
@@ -126,11 +147,6 @@ func serveFileExplorer(w http.ResponseWriter, r *http.Request) {
 // --- serve ui (possibly w/ preview injection) ---
 func serveEditorUI(w http.ResponseWriter, r *http.Request) {
 	// fetch index.html template from sws and inject preview if needed
-//	resp, err := http.Get(SWS_ADDR + "/index.html")
-//	if err != nil { http.Error(w, "HTML template unreachable", http.StatusBadGateway); return }
-//	defer resp.Body.Close()
-//	body, err := io.ReadAll(resp.Body)
-
 	body, err := os.ReadFile("/public/index.html")
 	if err != nil { http.Error(w, "Failed to read HTML template", http.StatusInternalServerError); return }
 

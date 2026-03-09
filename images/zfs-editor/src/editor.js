@@ -1,6 +1,6 @@
 import { EditorView, basicSetup } from "codemirror"
 import { markdown } from "@codemirror/lang-markdown"
-import { oneDark } from "@codemirror/theme-one-dark"
+import { plateauDark } from "./theme.js"
 import { keymap } from "@codemirror/view"
 import { indentWithTab } from "@codemirror/commands";
 
@@ -32,7 +32,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 		extensions: [
 			basicSetup, 
 			markdown(), 
-			oneDark, 
+			plateauDark, 
 			keymap.of([
 				{
 					key: "Mod-s",

@@ -1,0 +1,147 @@
+{{define "pdf-viewer"}}
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf_viewer.min.css">
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf_viewer.min.js"></script>
+	<script>pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';</script>
+
+	<style>
+		.modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.92); backdrop-filter: blur(5px); }
+		
+		/* The Controls (Top Right) */
+		.pdf-controls { position: fixed; right: 30px; top: 20px; z-index: 1001; display: flex; align-items: center; gap: 15px; }
+		.control-btn { background: rgba(255, 255, 255, 0.1); color: #ccc; border: 1px solid rgba(255,255,255,0.2); padding: 6px 14px; border-radius: 4px; cursor: pointer; text-decoration: none; font-size: 14px; transition: 0.2s; font-family: system-ui, sans-serif; }
+		.control-btn:hover { background: rgba(255, 255, 255, 0.2); color: #fff; }
+		.close-btn { color: #888; font-size: 32px; cursor: pointer; transition: 0.2s; line-height: 1; font-weight: bold; margin-left: 10px; }
+		.close-btn:hover { color: #e53935; }
+
+		/* The Page Counter (Bottom Center) */
+		.page-counter { position: fixed; bottom: 25px; left: 50%; transform: translateX(-50%); background: rgba(0, 0, 0, 0.6); color: #aaa; padding: 6px 16px; border-radius: 20px; font-family: monospace; font-size: 14px; z-index: 1001; pointer-events: none; backdrop-filter: blur(4px); border: 1px solid rgba(255,255,255,0.1); }
+
+		/* The Scrolling Container */
+		#viewerContainer { position: absolute; top: 0; left: 0; right: 0; bottom: 0; overflow: auto; outline: none; }
+		
+		/* Overriding Mozilla's default light theme */
+		.pdfViewer { padding-top: 80px; padding-bottom: 80px; }
+		.pdfViewer .page { margin: 0 auto 24px auto !important; border: none !important; box-shadow: 0 10px 40px rgba(0,0,0,0.8) !important; }
+		
+		/* Text Layer for Ctrl+F */
+		.pdfViewer .textLayer { opacity: 1; }
+		.pdfViewer .textLayer ::selection { background: rgba(0, 150, 255, 0.3); color: transparent; }
+	</style>
+
+	<div id="pdf-modal" class="modal">
+		
+		<div class="pdf-controls">
+			<a id="pdf-download-btn" class="control-btn" href="#" download>Download</a>
+			<button class="control-btn" onclick="printPdf()">Print</button>
+			<span class="close-btn" onclick="closePdfModal()">&times;</span>
+		</div>
+		<div class="page-counter">
+			<span id="current-page">1</span> / <span id="total-pages">?</span>
+		</div>
+
+		<div id="viewerContainer">
+			<div id="viewer" class="pdfViewer"></div>
+		</div>
+	</div>
+
+	<script>
+		const modal = document.getElementById('pdf-modal');
+		const container = document.getElementById('viewerContainer');
+		let pdfViewer = null;
+		let currentPdfUrl = ''; // Used for printing
+
+		function initViewer() {
+			const eventBus = new pdfjsViewer.EventBus();
+			
+			// Listen to the scroll event to update the page counter
+			eventBus.on('pagechanging', function (evt) {
+				document.getElementById('current-page').textContent = evt.pageNumber;
+			});
+
+			pdfViewer = new pdfjsViewer.PDFViewer({
+				container: container,
+				eventBus: eventBus,
+				textLayerMode: 1, 
+				removePageBorders: true
+			});
+
+			eventBus.on('pagesinit', function () {
+				pdfViewer.currentScaleValue = 'auto'; // Fits nicely in the window
+			});
+		}
+
+		async function openPdfModal(event, pdfUrl, filename) {
+			event.preventDefault();
+			currentPdfUrl = pdfUrl;
+			modal.style.display = 'block';
+
+			if (pdfViewer) {
+				try { pdfViewer.cleanup(); } catch(e) {}
+				pdfViewer = null;
+			}
+
+			document.getElementById('viewer').innerHTML = '';
+			container.scrollTop = 0;
+			initViewer();			
+
+			// Setup the Download Button
+			const dlBtn = document.getElementById('pdf-download-btn');
+			dlBtn.href = pdfUrl;
+			// Fallback filename if one isn't provided
+			dlBtn.download = (filename || 'document').replace('.qmd', '.pdf'); 
+
+			try {
+				const loadingTask = pdfjsLib.getDocument(pdfUrl);
+				const pdfDocument = await pdfjsLib.getDocument(pdfUrl).promise;
+				
+				await pdfViewer.setDocument(pdfDocument); 
+			
+				// Reset counters
+				document.getElementById('total-pages').textContent = pdfDocument.numPages;
+				document.getElementById('current-page').textContent = '1';
+			} catch (err) {
+				console.error("Failed to load PDF:", err);
+			}
+		}
+
+		function closePdfModal() {
+			modal.style.display = 'none';
+			if (pdfViewer) pdfViewer.setDocument(null); // Clears memory
+		}
+
+		// The Invisible Print Hack
+		function printPdf() {
+			if (!currentPdfUrl) return;
+			let printFrame = document.getElementById('hidden-print-frame');
+			if (!printFrame) {
+				printFrame = document.createElement('iframe');
+				printFrame.id = 'hidden-print-frame';
+				printFrame.style.display = 'none';
+				document.body.appendChild(printFrame);
+			}
+			printFrame.src = currentPdfUrl;
+			// Give it a tiny delay to load the file before triggering the print dialog
+			printFrame.onload = () => { setTimeout(() => printFrame.contentWindow.print(), 200); };
+		}
+
+		// Keyboard & Click Listeners
+		document.addEventListener('keydown', e => { 
+			if (modal.style.display === 'block') {
+				// Close on Escape
+				if (e.key === "Escape") closePdfModal();
+				
+				// Hijack Ctrl+P / Cmd+P
+				if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'p') {
+					e.preventDefault(); // Stop the website from printing
+					printPdf();         // Print the PDF instead
+				}
+			}
+		});
+
+		// Close if clicking the dark void (but not the pages or buttons)
+		container.addEventListener('click', e => { 
+			if (e.target.id === 'viewerContainer' || e.target.className === 'pdfViewer') closePdfModal(); 
+		});
+	</script>
+{{end}}
