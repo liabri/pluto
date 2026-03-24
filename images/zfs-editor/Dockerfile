@@ -24,5 +24,7 @@ COPY --from=builder /build/orchestrator /usr/bin/orchestrator
 COPY ./static/index.html .
 COPY ./static/explorer.html .
 COPY ./static/pdf-viewer.html .
+COPY ./static/sheets.html .
+COPY ./static/js ./js
 ENTRYPOINT [""]
 CMD ["/usr/bin/orchestrator"]

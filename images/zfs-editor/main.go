@@ -4,7 +4,7 @@ package main
 // output/*.html need to ne able to update, browser caching causes issues with this
 // nice file explorer
 
-import("bytes"; "log"; "fmt"; "io"; "html/template"; "time"; "os"; "os/exec"; "net/http"; "net/http/httputil"; "net/url"; "strings"; "path/filepath")
+import("bytes"; "log"; "fmt"; "io"; "html/template"; "time"; "os"; "os/exec"; "net/http"; "net/http/httputil"; "net/url"; "strings"; "path"; "path/filepath")
 
 const (
 	SWS_ADDR = "http://localhost:8081" // the server at /public
@@ -27,7 +27,9 @@ func main() {
 		if strings.Contains(r.URL.Path, "/api/") { handleAPI(w,r); return }
 
 		// editor ui, only shown when a file is open (that we want to edit) a.k.a. when path has query "?file=<filename>" 
-		if r.URL.Query().Get("file") != "" { serveEditorUI(w, r); return }
+		if r.URL.Query().Get("file") != "" { 
+			if strings.ToLower(path.Ext(r.URL.Query().Get("file"))) == ".usx" { serveSheetsUI(w,r); return } else { serveEditorUI(w, r); return } 
+		}
 
 		// custom file explorer
 		if r.URL.Path==SITE_ROOT { serveFileExplorer(w, r); return }
@@ -144,6 +146,24 @@ func serveFileExplorer(w http.ResponseWriter, r *http.Request) {
 	if err := tmpl.Execute(w, data); err != nil { log.Printf("Error executing template: %v", err) }	
 }
 
+func serveSheetsUI(w http.ResponseWriter, r *http.Request) {
+	// fetch index.html template from sws and inject preview if needed
+	body, err := os.ReadFile("/public/sheets.html")
+	if err != nil { http.Error(w, "Failed to read HTML template", http.StatusInternalServerError); return }
+
+	// build base tag for index.html
+	prefix := r.URL.Path
+	if !strings.HasSuffix(prefix, "/") { prefix += "/" }
+	baseTag := fmt.Sprintf(`<base href="%s">`, prefix)
+	out := bytes.Replace(body, []byte("{{.BaseTag}}"), []byte(baseTag), 1) 
+	
+	w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+	w.Header().Set("Pragma", "no-cache")
+	w.Header().Set("Expires", "0")
+	w.Header().Set("Content-Type", "text/html")
+	w.Write(out)
+}
+
 // --- serve ui (possibly w/ preview injection) ---
 func serveEditorUI(w http.ResponseWriter, r *http.Request) {
 	// fetch index.html template from sws and inject preview if needed
@@ -180,7 +200,6 @@ func serveEditorUI(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Expires", "0")
 	w.Header().Set("Content-Type", "text/html")
 	w.Write(out)
-
 }
 
 func handleAPI(w http.ResponseWriter, r *http.Request) {

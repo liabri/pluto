@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    {{.BaseTag}}  
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Univer Sheets - Homelab Edition</title>
+    
+    <link rel="stylesheet" href="js/univer-design.css" />
+    <link rel="stylesheet" href="js/univer-sheets.css" />
+
+    <script src="js/react.min.js"></script>
+    <script src="js/react-dom.min.js"></script>
+    <script src="js/rxjs.min.js"></script>
+    <script src="js/echarts.min.js"></script>
+
+    <script src="js/univer-core.js"></script>
+    <script src="js/univer-presets.js"></script>
+    <script src="js/univer-sheets-core.js"></script>
+    <script src="js/univer-sheets-en-US.js"></script>
+
+    <style>
+        html, body { margin: 0; padding: 0; height: 100%; width: 100%; overflow: hidden; background: #f8f9fa; }
+        #app { position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: #fff; }
+        .toolbar {
+            position: fixed; top: 12px; right: 40px; z-index: 3000;
+            display: flex; gap: 8px; background: white; padding: 8px;
+            border: 1px solid #ddd; border-radius: 6px; box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+        button { 
+            cursor: pointer; padding: 6px 14px; font-weight: bold; font-family: sans-serif;
+            font-size: 12px; border: 1px solid #217346; background: #fff; color: #217346;
+            border-radius: 3px;
+        }
+        button:hover { background: #217346; color: #fff; }
+        #status { font-size: 11px; color: #888; align-self: center; font-family: sans-serif; margin-right: 5px; }
+
+        @media print {
+            .toolbar, .univer-toolbar, .univer-footer, .univer-header-container,
+            .univer-sheet-tab-bar, .univer-formula-bar, .univer-sidebar { display: none !important; }
+            html, body { height: auto !important; overflow: visible !important; }
+            #app { position: static !important; height: auto !important; width: 100% !important; overflow: visible !important; }
+            canvas { max-width: 100% !important; height: auto !important; page-break-inside: avoid; }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="toolbar">
+        <span id="status">System Ready</span>
+        <button onclick="doSave()">💾 Save .usx</button>
+        <button onclick="doInfinitePrint()">🖨️ Print (A3/A4)</button>
+    </div>
+
+    <div id="app"></div>
+
+    <script>
+        // Use a "Safety First" approach to find the globals
+        // This checks both the window and the Presets object
+        const Core = window.UniverCore || (window.UniverPresets ? window.UniverPresets.UniverCore : null);
+        const Presets = window.UniverPresets;
+        const Sheets = window.UniverPresetSheetsCore;
+        const LocaleData = window.UniverPresetSheetsCoreEnUS;
+
+        if (!Core || !Presets || !Sheets) {
+            document.getElementById('status').innerText = "Load Error!";
+            console.error("Missing Global: Core:", !!Core, "Presets:", !!Presets, "Sheets:", !!Sheets);
+        }
+
+        const { createUniver } = Presets;
+        const { LocaleType, mergeLocales } = Core;
+        const { UniverSheetsCorePreset } = Sheets;
+
+        // Initialize Engine
+        const { univer, univerAPI } = createUniver({
+            locale: LocaleType.EN_US,
+            locales: {
+                [LocaleType.EN_US]: mergeLocales(LocaleData),
+            },
+            presets: [
+                UniverSheetsCorePreset({ container: 'app' }),
+            ],
+        });
+
+        // API Setup
+        const params = new URLSearchParams(window.location.search);
+        const filename = params.get('file');
+        const statusEl = document.getElementById('status');
+        const loadUrl = `api/load?file=${encodeURIComponent(filename)}`;
+        const saveUrl = `api/save?file=${encodeURIComponent(filename)}`;
+
+        if (filename) {
+            fetch(loadUrl)
+                .then(res => res.json())
+                .then(data => {
+                    univerAPI.createWorkbook(data);
+                    setTimeout(() => window.dispatchEvent(new Event('resize')), 300);
+                })
+                .catch(() => {
+                    univerAPI.createWorkbook({ name: "New Ledger" });
+                    statusEl.innerText = "New File Created";
+                });
+        }
+
+        window.doSave = async () => {
+            statusEl.innerText = "Saving...";
+            const snapshot = univerAPI.getActiveWorkbook().getSnapshot();
+            try {
+                const res = await fetch(saveUrl, {
+                    method: 'POST', 
+                    body: JSON.stringify(snapshot, null, 2)
+                });
+                if (res.ok) {
+                    statusEl.innerText = "Disk Synced";
+                    setTimeout(() => statusEl.innerText = "System Ready", 2000);
+                }
+            } catch (e) { statusEl.innerText = "Save Error"; }
+        };
+
+        window.doInfinitePrint = () => {
+            const workbook = univerAPI.getActiveWorkbook();
+            const sheet = workbook.getActiveSheet();
+            const app = document.getElementById('app');
+            sheet.setHiddenGridlines(true); 
+            const originalStyle = app.style.cssText;
+            app.style.position = 'relative';
+            app.style.height = 'auto';
+            app.style.overflow = 'visible';
+
+            setTimeout(() => {
+                window.print();
+                app.style.cssText = originalStyle;
+                sheet.setHiddenGridlines(false);
+                window.dispatchEvent(new Event('resize'));
+            }, 600);
+        };
+    </script>
+</body>
+</html>
