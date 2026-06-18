@@ -1,82 +1,162 @@
 # pluto
-my personal homelab completely based on alpine and podman. all images are created by me.
+my personal homelab completely based on nixos and podman with custom-authored images. the architecture is strictly governed by a two-part physical and logical paradigm: The Storage Foundation (State) and The Application Runtime (Stateless compute). the physical storage is respectively split between a logically isolated ZFS mirror pool and an ephemeral ext4 OS drive.
 
-## modules
-containers are organised into functional modules based on responsibility and purpose. podman pods were considered for grouping, however, they were avoided to minimise attack surface and allow fine-grained per-container network and privilege isolation. pods enforce shared namespaces (network, IPC, and optionally PID) across all member containers, which is often not necessary. this approach keeps containers semantically grouped while preserving runtime isolation, flexible networking, and selective cooperation, rather than imposing rigid coupling through pods.
+## part I: the source of truth (state)
 
-### michel
+all persistent data and backups live exclusively on a mirrored zfs pool of high-capacity HDDs, hereafter referred to as the `datastore`. this pool acts as the system's Single Source of Truth (SoT). it guarantees data integrity and disaster recovery natively through hardware ECC memory validation and automated host-level zfs snapshots.
+
+internally, the datastore is not organized by standard folders, but by distinct zfs datasets (e.g., git, games, etc.). this logical segregation allows tuning specific filesystem properties, such as compression algorithms, record sizes, and snapshot retention policies, to perfectly match the distinct nature of the data residing within each dataset.
+
+**table 1: datasets**
+| dataset                    | refquota | quota | recordsize | compression | canmount | access | data_type | purpose & contents     | 
+| -------------------------- | -------- | ----- | ---------- | ----------- | -------- | ------ | --------- | ---------------------- | 
+| /mahzen/muzika             | 270G     | 300G  | 1M         | off         | on       | ro*    | immutable | music library (.flac)  |
+| /mahzen/ritratti           | 90G      | 100G  | 1M         | lz4         | on       | ro*    | immutable | photos                 |
+| /mahzen/doc                | 10G      | 20G   | 128K (def) | zstd        | on       | rw     | volatile  | .griss or .typst       |
+| /mahzen/git                | 50G      | 100G  | 128K (def) | zstd        | on       | rw     | volatile  | bare git repo          |
+| /mahzen/loghob             | N/A      | N/A   | 1M         | lz4         | off      |        |           | parent games set       |
+| /mahzen/loghob/cold        | 1.8T     | 2T    | 1M         | zstd-9      | on       | ro*    | bulk      | game files             |
+| /mahzen/loghob/hot         | 10G      | 20G   | 64K        | lz4         | on       | rw     | volatile  | game profiles          |
+| /mahzen/fotografija        | N/A      | N/A   | 64K        | lz4         | off      |        |           | parent photography set |
+| /mahzen/fotografija/hot    | 50G      | 100G  | 64K        | lz4         | on       | rw     | volatile  | photography edits      |
+| /mahzen/fotografija/cold   | 80G      | 100G  | 1M         | zstd-9      | on       | ro*    | immutable | photography raws       |
+
+* datasets may be temporarily unlocked for 15 minutes for writing purposes via scriptbins defined in `configuration.nix`.
+global datastore properties: `xattr=sa`; `acltype=posixacl`; `snapdir=visible`; `atime=off`.
+
+the hot/cold split (such as `/mahzen/loghob/cold` and `/mahzen/loghob/hot`) isolates fundamentally opposing datasets to maximize performance, security, and scalability. structurally, volatile `hot` data demands small blocks (64K) and aggressive snapshots, while immutable `cold` data requires massive blocks (1M) and heavy compression. this strict boundary prevents snapshot bloat and confines copy-on-write fragmentation to active databases, ensuring cold media always streams at peak sequential speeds. semantically, it enables a WORM security model: cold archives are locked read-only at the ZFS kernel level against ransomware, while hot sets remain fluid. operationally, this split unlocks asymmetric backup strategies, syncing hot configurations hourly and massive media monthly, and frictionless hardware tiering.
+
+additionally, to prevent split-brain scenarios, where multiple devices hold competing, desynced data, the architecture strictly minimizes local copies. this specifically targets `/mahzen/fotografija/hot` and `/mahzen/loghob/hot`, since other volatile datasets are either natively version-controlled (`/mahzen/git`) or accessed exclusively via web interfaces (`/mahzen/doc`). client access is dictated by mobility: fixed LAN devices (desktops) interact entirely via SFTP mounts with zero local footprint. conversely, roaming devices (laptops, phones) utilise SFTP strictly to browse cold assets, relying on a local cache managed via `syncthing`. syncthing is a daemon running continuously in the background, seamlessly syncing changes peer-to-peer the moment a roaming device connects to a network, automatically preserving older files as conflict copies if simultaneous changes occur.
+
+## part II: the ephemeral runtime (stateless)
+
+the OS and all containerised applications and services run on a fast, primary SSD. this drive is treated as a strictly ephemeral, disposable runtime environment. no valuable persistent state lives here. containers execute on the SSD to maximize IOPS (e.g., for database queries and game servers), but read and write their state directly to the datastore via explicit bind-mounts. runtime write-access to the SoT is heavily restricted. where possible, containers receive read-only (:ro) access. furthermore, live "working trees" are isolated entirely on the SSD to air-gap public services from the HDD. for example, the darkroom website's bare git repository is locked safely on the datastore; upon a git push, a hook extracts the working tree to an SSD volume, which the web container then serves read-only. this ensures maximum NVMe speed and complete physical isolation.
+
+all services run from /srv/<service>.
+
+### modules
+containers and services are organised into functional nix modules based on responsibility and purpose. this approach keeps containers and services semantically grouped while preserving runtime isolation, flexible networking, and selective cooperation.
+
+container vs service
+
+**table 2: containers**
+| container       | module   | depends on      | named-volume mounts                       | host-bind mounts    | purpose                                      |
+| --------------- | -------- | --------------- | ----------------------------------------- | ------------------- | -------------------------------------------- |
+| `rproxy-edge`   | michel   |                 |                                           |                     | caddy reverse proxy                          |
+| `vpn-edge`      | michel   |                 |                                           |                     | wireguard vpn                                |
+| `lbmt-foto`     | frangisk | `rproxy-edge`   | `lbmt-foto-wt:ro`                         |                     | website photography portfolio                |
+| `lbmt-shop`     | frangisk | `rproxy-edge`   | `lbmt-shop-wt:ro`<br>`lbmt-shop-database` |                     |                                              |
+| `git-ssh`       | eligius  | `vpn-edge`      | `lbmt-foto-wt`<br>`lbmt-weblog-wt`        | `/mahzen/git:rw`    |                                              |
+| `git-web`       | eligius  | `rproxy-edge`   |                                           | `/mahzhen/git:ro`   |                                              |
+| `mc-server`     | akitio   | `rproxy-edge`   | `mc-rcon`<br>`mc-working-tree`            |                     |                                              |
+| `mc-ttyd     `  | akitio   | `vpn-edge`<br>`mc-server`   | `mc-rcon`                     |                     |                                              |
+| `mc-map`        | akitio   | `rproxy-edge`<br>`mc-server`| `mc-working-tree`             |                     |                                              |
+| `mc-world-pull` | akitio   | `mc-server`     | `mc-working-tree` | `/mahzen/loghob/minecraft/akitio/world:ro`  |                                              |
+| `navid-server`  | cecilia  | `vpn-edge`      |                                           | `/mahzen/muzika:ro` |                                              |
+| `navid-web`     | cecilia  | `navid-web`     |                                           |                     |                                              |
+
+**table 3: services**
+| service         | module   | purpose                                         |
+| --------------- | -------- | ----------------------------------------------- |
+| `zfs-ssh`       | isidore  | ssh server for the whole server                 |
+| `zfs-sftp`      | isidore  | enabled sftp in the above ssh server            |
+| `zfs-sanoid`    | isidore  | handles sanoid snapshots                        |
+| `mc-check-wt`   | akitio   | checks git status the working tree of mc-server |
+| `zfs-sanoid`    | isidore  | handles sanoid snapshots                        |
+| `apparmor`      |          | security                                        |
+| `fail2ban`      |          | ban ips that fail too many times(?)             |
+
+#### isidore
+**containers**: `zfs-web`.
+**services**: `zfs-sftp`; `zfs-sanoid`.
+
+**table 4: sanoid snapshot retention policies**
+| data_type | hourly | daily | weekly | monthly | 
+| --------- | ------ | ----- | ------ | ------- |
+| volatile  | 24     | 7     | 4      | 0       |
+| immutable | 0      | 7     | 4      | 3       |
+| bulk      | 0      | 0     | 0      | 0       |
+
+#### michel
 the `michel` module acts as the semantic gateway for all external access. all external traffic is intended to flow through michel into the `privat` and `public` networks, where a wireguard VPN and an HTTP/TCP reverse-proxy handle routing, respectively. (in the future, i would like to move `rproxy-edge` to an external server to mask my homelab.)
-**containers**: `rproxy-edge`; `reverse-proxy-stats` (go access); `vpn-edge`.
+**containers**: `rproxy-edge`; `rproxy-stats` (go access); `vpn-edge`.
+**services**: `fail2ban`; `nftables`.
 
-### frangisk
+##### nftables
+`reverse-proxy blocks SSH, VPN, everything else besides HTTP(S) and MINECRAFT TCP? maybe, by default, blacklist *, whitelist some in containers: 
+```
+#!/usr/sbin/nft -f
+
+table inet filter {
+    chain input {
+        type filter hook input priority 0;
+        policy drop;
+
+        # allow loopback
+        iif lo accept
+
+        # allow established/related connections
+        ct state established,related accept
+
+        # everything else is dropped
+    }
+
+    chain forward {
+        type filter hook forward priority 0;
+        policy drop;
+    }
+
+    chain output {
+        type filter hook output priority 0;
+        policy accept;
+    }
+}
+```
+
+#### frangisk
 the `frangisk` module contains all my webpages intended for access on the `public`.
-**containers**: `lbmt-darkroom`; `lbmt-weblog`; `lbmt-shop`.
+**containers**: `lbmt-foto`; `lbmt-weblog`; `lbmt-shop`.
 
-### eligius
-the `eligius` module provides ssh-access git hosting for a repository pool via the `privat` network, and a read-only web interface via the `public` network.
+#### eligius
+the `eligius` module provides ssh-access git hosting for a repository pool via the `privat` network, and a read-only web interface via the `public` network. note that to separate the hdd / ssd effectively for modules like frangisk or akitio, i would need a way to keep working-trees of git repos updated. a post-receive hook is the way. in git repo: `git --work-tree=/var/ssd-volumes/lbmt-foto-wt checkout -f main`
 **containers**: `git-ssh`; `git-web`.
 
-### isidore
-the `isidore` module handles access to my datastore, intitled `zfs` and mounted via a bind-mount. ssh-access and a web explorer (`filestash`) are provided via the `privat` network. it is expected to treat this datastore with a git-like paradigm, where edits are done on localised copies, and pushed via `rsync`, such that any device connected acts as a satellite. for accessible editing of the datastore, it can be mounted using `sftp`. 
+#### akitio
+the `akitio` module manages my personal modded minecraft world of the same name. access to the server and a map of the world are provided via the `public` network. a web-terminal to admin the server is available via the `privat` network. a backup system is run locally as a service, i.e. there is no way to access it over WAN.
+**containers**: `mc-server`; `mc-ttyd`; `mc-map`; `mc-world-pull`.
+**services**: `mc-check-wt`; `mc-borg-backup`.
 
-i am still considering add a  `nas-nfs-ganesha` container to mount the storage on my PC. because, as is, both my PC and laptop are satellites of my server. this leads to have potentially having 3 copies of the same data. if this data is volatile (i.e. edited a lot), it can get messy to track which is the most up to date. if i mount the nas via `nfs` on my PC, the laptop becomes a satellite of my PC. this reduces the possible number of copies to 2. but at the end, i only have 2 working copies, regardless if i use nfs-ganesha or not.
+#### veirnin
+image server
+**containers**: probably `immich`.
 
-(personal system note: the datastore is a zfs pool on a primary m.2 ssd for active data, secured with native zfs encrpytion. data integrity and disaster recovery are managed through an automated "pull-only" backup architecture, where a separate high capacity hdd pool remains logically isolated and is never exposed to sftp or nfs. a sanoid or zrepl (TBA) container manages point-in-time snapshots and executes incremental zfs send/receive operation. to prevent performance degradation, a retntion policy keeps the ssd pool below 80% capacity by pruning old snapshots.)
-**containers**: `zfs-ssh`; `zfs-web`; `zfs-backup`.
-
-### akitio
-the `akitio` module manages my personal modded minecraft world of the same name. access to the server and a map of the world are provided via the `public` network. a web-terminal to admin the server is available via the `privat` network. a backup system is run locally, i.e. there is no way to access it over WAN.
-**containers**: `mc-server`; `mc-ttyd-rcon`; `mc-map`; `mc-backup`.
-
-### cecilia
+#### cecilia
 the `cecilia` module serves a music server exposing the `opensubsonic` api and `navidrome` api, which is accessible via the `privat` network. further, a web client is also accessible via the `privat` network.
 **containers**: `navid-server`; `navid-web`.
 
-### gavrilo
+#### gavrilo
 prospective name for cctv server
 
-### genesius
+#### genesius
 prospective name for radarr etccc, but im unsure. all netns owned in michel
 
-**table 1: containers**
-| container             | module   | depends on             | named-volume mounts          | host-bind mounts                        | notes
-| --------------------- | -------- | ---------------------- | ---------------------------- | --------------------------------------- | ------------------------------------------ |
-| `rproxy-edge`         | michel   |                        |                              |                                         |                                            |
-| `vpn-edge`            | michel   |                        |                              |                                         |                                            |
-| `lbmt-darkroom`       | frangisk |                        |                              |                                         | working tree of static site built into image |
-| `lbmt-weblog`         | frangisk |                        |                              |                                         | working tree of static site built into image |
-| `lbmt-shop`           | frangisk |                        | `lbmt-shop-database`         |                                         | working tree of site baked into image      |
-| `lbmt-backup`         | frangisk | `lbmt-shop`            | `lbmt-shop-database`         | `/zfs/storage/fotografija/shop`         |                                            |
-| `git-ssh`             | eligius  |                        |                              | `/zfs/storage/git`                      |                                            |
-| `git-web`             | eligius  |                        |                              | `/zfs/storage/git`                      |                                            |
-| `zfs-ssh`             | isidore  |                        |                              | `/zfs/storage`                          |                                            |
-| `zfs-web`             | isidore  |                        |                              | `/zfs/storage`                          |                                            | 
-| `zfs-backup`          | isidore  |                        |                              | `/zfs/storage`, `/zfs/backup`           |                                            |
-| `mc-server`           | akitio   |                        | `mc-rcon`, `mc-working-tree` |                                         |                                            |
-| `mc-ttyd-rcon`        | akitio   | `mc-server`            | `mc-rcon`                    |                                         |                                            |
-| `mc-map`              | akitio   | `mc-server`            | `mc-working-tree`            |                                         |                                            |
-| `mc-backup`           | akitio   | `mc-server`            | `mc-rcon`, `mc-working-tree` | `/zfs/storage/loghob/minecraft/akitio/world`|                                        |
-| `navid-server`        | cecilia  |                        |                              | `/zfs/storage/muzika/library`           |                                            |
-| `navid-web`           | cecilia  | `navid-web`            |                              |                                         | using direct veth-pair to communicate w/ navid-server |
+### images
 
-
-## images
-
-### localhost/wireguard
+#### localhost/wireguard
 (`nft add rule ip filter forward iif "vpn-edge" oif "vpn-edge" drop`) # make sure to enable host<->michel forwarding.
 
-### localhost/lighttpd: a generic lighttpd server
+#### localhost/lighttpd: a generic lighttpd server
 use launch parameters: `-D -f /etc/lighttpd/lighttpd.conf"`. the server serves whatever is at `/var/www/html`, and requires /var/lighttpd.conf to be defined as follows:
 ```
 server.tag="<tag>"
 server.port=<port>
 ```
 
-### localhost/git-ssh: a simple ssh server 
+#### localhost/git-ssh: a simple ssh server 
 limited to git-shell-commands `ls` `mk <repo>` and `rm <repo>`.
 the default directory is /home/git/repos (as defined in git-shell-commands), I would suggest mounting your repo directory here. Additionally, following the ssh standard, `/home/git/.ssh/authorized_keys` will be read. supports git-lfs! requires X package on client.
 
-### localhost/cgit: a modified lighttpd image serving cgit
+#### localhost/cgit: a modified lighttpd image serving cgit
 all definitions must be done as the lighttpd image, with the addition of a cgitrc which must be mounted to `/etc/cgitrc`.
 
 - cgit private directory?;
@@ -87,7 +167,7 @@ all definitions must be done as the lighttpd image, with the addition of a cgitr
 - cgit releases (binaries) (might need to code extension myself);
 - cgit some tabs are broken for large repos; try adding `scan_limit=1000000 max_objects=1000000` to the config. also can try shallow clones for web display, if the repo is huge, maybe only `--depth=50` recent commits show.
 
-### localhost/caddy-reverse-proxy
+#### localhost/caddy-reverse-proxy
 a `Caddyfile` must be mounted to `etc/caddy/Caddyfile/`. logging is enabled via 
 ```    log {
         output file /var/log/caddy/access.log
@@ -95,18 +175,18 @@ a `Caddyfile` must be mounted to `etc/caddy/Caddyfile/`. logging is enabled via
     }
 ```
 
-### localhost/minecraft-server
+#### localhost/minecraft-server
 simply provides a Java OpenJdk 21 environment exposing port 25565. working-tree is found in a named volume mount for persistence. before every launch, `check-working-tree.sh` confirms it is up to date with the origin, and if not, will update. the world will also be in this named volume mount, and therefore this image ideally should not ever be mounted with a host bind mount, for security purposes. my system uses borg in another container which mounts the named volume containing the server+world, and backups the world to my `/zfs/storage`.
 
 the server is whitelisted, but it is offline-mode. therefore, i was thinking to make a firewall ip whitelist for this container (or do it in the tcp reverse proxy). theres also the option to get players to use DDNS in their router, which would allow me automatically resolve their hostnames and updated the allowed IPs (dynamic ip shenanigans). 
 
-### localhost/minecraft-ttyd-rcon
+#### localhost/minecraft-ttyd
 using rcon cli, ttyd and a wrapper script to show a web-terminal with direct access to the msg server, showing all logs of the current session and taking any command. it communicates to the mc server via a socat socket at /tmp/rcon.sock. this is to avoid opening any networking connections between a private container and a public container, and rcon only talks in tcp. /tmp/rcon.sock is found on a named volume.
 
-### localhost/minecraft-backup
+#### localhost/minecraft-backup
 using borg, the container wil have a cron insider that executed backup.sh once a day. it will communicate to the server via the rcon.sock in the `rcon` named volume mount using socat. this is so the server can stop writing to the world, until borg is done backing it up. this is done to avoid corrupted or half written files. 
 
-### localhost/minecraft-map
+#### localhost/minecraft-map
 based on the lighttpd (maybe i dont even need make an image, and just use the lighttpd image i made. the point is, it will mount the named volume mount where the working-tree and world is. if it detects a change in the world maps folder, it will run the little-a-map binary to render the new map. the lighttpd server automatically updates.
 ```
 #!/usr/bin/env bash
@@ -142,21 +222,12 @@ $HTTP["url"] =~ "\.(png|jpg|jpeg|webp|svg)$" {
 }
 ```
 
-## to look into/notes
+#### to look into/notes
 - users/owners
-- when mounting, prioritise read-only volumes. use named volumes instead of host bind mounts if persistence is needed.
-- reduce root privileges such as CAP_SYS_ADMIN; CAP_NET_ADMIN; CAP_SYS_MODULE. (list enabled privileges: `podman run --rm alpine capsh --print | grep Bounding`);
-- `cat /sys/kernel/security/apparmor/profiles` apparmor enabled if returns anything; `podman run --rm alpine grep Seccomp /proc/self/status` "Seccomp: 2" means a filter is active (the default one). real test: `podman run --rm alpine reboot`. logs: `dmesg | grep -iE "audit|apparmor|seccomp"`
-- change ports, passwords etc... compared to github repo.
 - static site gen for blog need to add --prefix option for all links (in this case /blog/);
-- git check if a git user (instead of liam) would be good for eligius. (i dont think so as podman is running under liam);
-- git-ssh NOTE git-lfs-transfer will be required on the client to use lfs-over-ssh;
-- reverse-proxy statistics
-- make images more secure using a builder-runtime (and maybe distroless runtime)
-- view user-space network interfaces (netavark) - `doas nsenter -t $(pgrep -u $USER podman) -n ip link` (what is this?)
 
-## networking
-this network architecture utilises a dual-hub, zero-trust model to enforce strict lateral isolation between containers, which unless is required, is usually done via `socat` or opening a `veth` between the appropriate containers. additionally, standard container bridge networking is bypassed in favour of manual `veth` pair injection directly into container network namespaces, which eliminate the host-level gateway and the associated risk of inter-container leaks, common in flat network. containers are segmented into two distinct "hub", a `privat` network (via `vpn-edge`), and a `public` network (via `rproxy-edge`). this is where communication is restricted to point-to-point virtual links using `/30` subnets.
+### networking
+this network architecture utilises a dual-hub, zero-trust model to enforce strict lateral isolation between containers, which unless is required, is usually done via `socat` or opening a `veth` pair between the appropriate containers. additionally, standard container bridge networking is bypassed in favour of manual `veth` pair injection directly into container network namespaces, which eliminate the host-level gateway and the associated risk of inter-container leaks, common in flat network. containers are segmented into two distinct "hub", a `privat` network (via `vpn-edge`), and a `public` network (via `rproxy-edge`). this is where communication is restricted to point-to-point virtual links using `/30` subnets.
 
 the Alpine host functions as a silent switchboard; because interfaces are moved into namespaces, the host routing table remains pristine and unexploitable. this is also paired with granular traffic control, as each connection is a dedicated "virtual wire," precise `nftables` filtering is done at the network level rather than relying on broad, automated firewall rules.
 
@@ -177,7 +248,7 @@ the network is invariant, i.e. the host does not route between containers. all W
 | --------------------- | -------------- | --------------- | --------------- | --------------- | ------ |
 | `host-pub`            | `host`         | `192.168.100.0` | `rproxy-edge`   | `192.168.100.1` | `/31`  |
 | `host-pri`            | `host`         | `192.168.101.0` | `vpn-edge`      | `192.168.101.1` | `/31`  |
-| `pub-lbmt-darkroom`   | `rproxy-edge`  | `172.16.1.0`    | `lbmt-darkroom` | `172.16.1.1`    | `/31`  |
+| `pub-lbmt-foto`       | `rproxy-edge`  | `172.16.1.0`    | `lbmt-foto`     | `172.16.1.1`    | `/31`  |
 | `pub-lbmt-weblog`     | `rproxy-edge`  | `172.16.2.0`    | `lbmt-weblog`   | `172.16.2.1`    | `/31`  |
 | `pub-lbmt-shop`       | `rproxy-edge`  | `172.16.3.0`    | `lbmt-shop`     | `172.16.3.1`    | `/31`  |
 | `pri-git-ssh`         | `vpn-edge`     | `10.1.1.0`      | `git-ssh`       | `10.1.1.1`      | `/31`  |
@@ -185,7 +256,7 @@ the network is invariant, i.e. the host does not route between containers. all W
 | `pri-zfs-ssh`         | `vpn-edge`     | `10.1.2.0`      | `zfs-ssh`       | `10.1.2.1`      | `/31`  |
 | `pri-zfs-web`         | `vpn-edge`     | `10.1.3.0`      | `zfs-web`       | `10.1.3.1`      | `/31`  |
 | `pub-mc-server`       | `rproxy-edge`  | `172.16.5.0`    | `mc-server`     | `172.16.5.1`    | `/31`  |
-| `pri-mc-ttyd-rcon`    | `vpn-edge`     | `10.1.4.0`      | `mc-ttyd-rcon`  | `10.1.4.1`      | `/31`  |
+| `pri-mc-ttyd     `    | `vpn-edge`     | `10.1.4.0`      | `mc-ttyd     `  | `10.1.4.1`      | `/31`  |
 | `pub-mc-map`          | `rproxy-edge`  | `172.16.6.0`    | `mc-map`        | `172.16.6.1`    | `/31`  |
 | `pri-navid-server`    | `vpn-edge`     | `10.1.5.0`      | `navid-server`  | `10.1.5.1`      | `/31`  |
 | `pri-navid-web`       | `vpn-edge`     | `10.1.6.0`      | `navid-web`     | `10.1.6.1`      | `/31`  |
@@ -237,7 +308,7 @@ the network is invariant, i.e. the host does not route between containers. all W
     |  | ┌───────────────────────┼──┼─────────────────────────┼──┼───────────────────────┐ │  |
     |  | │                                 module akitio                                 | │  |
     |  | ╞═══════════════════════╬══╬═════════════════════════╬══╬═══════════════════════╡ |  |
-    |  | │ + mc-ttyd-rcon        |  | + mc-server             │  | + mc-backup           | |  |
+    |  | │ + mc-ttyd             |  | + mc-server             │  | + mc-backup           | |  |
     |  | │                       |  | + mc-map                │  |                       | |  |
     |  | └───────────────────────┼──┼─────────────────────────┼──┼───────────────────────┘ |  |
     |  | ┌───────────────────────┼──┼───────────────────────┐ │  |                         │  |
@@ -253,7 +324,7 @@ the network is invariant, i.e. the host does not route between containers. all W
     |  |                         |  | ┌─────────────────────┐ |  |                         |  |
     |  |                         |  | │ pod frangisk        │ |  |                         |  |
     |  |                         |  | ╞═════════════════════╡ |  |                         |  |
-    |  |                         |  | │ + darkroom          │ |  |                         |  |
+    |  |                         |  | │ + foto              │ |  |                         |  |
     |  |                         |  | │ + weblog            │ |  |                         |  |
     |  |                         |  | └─────────────────────┘ |  |                         |  |
     |  +-------------------------+  +-------------------------+  +-------------------------+  |
@@ -272,7 +343,7 @@ the network is invariant, i.e. the host does not route between containers. all W
                 +-------┬-------+     +-------┬-------+       host and michel
                    ┌────┘                     └────┐                     
      +-------------▼-------------+   +-------------▼-------------+
-     |     vpn-edge (tun0)       |   | rproxy-edge (eth0) |   <-- veth interfaces 
+     |     vpn-edge (tun0)       |   |    rproxy-edge (eth0)     |   <-- veth interfaces 
      +-------------┬-------------+   +-------------┬-------------+       in module michel
                    │                               │
      +-------------▼-------------+   +-------------▼-------------+      veth pairs between
@@ -283,51 +354,3 @@ the network is invariant, i.e. the host does not route between containers. all W
        |   container 1 (eth0)  |       |   container 2 (eth0)  |   <-- veth interfaces inside 
        +-----------------------+       +-----------------------+       other containers
 ```
-
-## security
-
-my threat model is...
-
-### apparmor & seccomp
-the host only has 1 apk: Podman. therefore, the attack surface is extremely small, and a simple profile will suffice (/etc/apparmor/host.profile). 
-
-however, a few small additions for my system have been added:
-- `/zfs/storage` blacklisted;
-- need to check if i can disable containers from making their own networks
-
-### nftables
-`reverse-proxy blocks SSH, VPN, everything else besides HTTP(S) and MINECRAFT TCP? maybe, by default, blacklist *, whitelist some in containers: 
-```
-#!/usr/sbin/nft -f
-
-table inet filter {
-    chain input {
-        type filter hook input priority 0;
-        policy drop;
-
-        # allow loopback
-        iif lo accept
-
-        # allow established/related connections
-        ct state established,related accept
-
-        # everything else is dropped
-    }
-
-    chain forward {
-        type filter hook forward priority 0;
-        policy drop;
-    }
-
-    chain output {
-        type filter hook output priority 0;
-        policy accept;
-    }
-}
-```
-
-### fail2ban
-i think its best to run it on host, to protect from bandwidth dos attacks. the issue is, it needs to see caddy logs to see who's attacking. coz if i put it into `rproxy-edge` container, it will successfully protect the container and other public containers from attacks, but not the host. (i think at least).
-
-## out of band kvm
-a mobo with aspeed bmc or an external pkivm/nanokvm will allow the system to have an out of band management layer, that operates entirely independently of the host os and primary network stack. the kvm interfacxe is physically isolated on a dedicated management port and only accessible through a strictly firewalled vpn tunnel on my openwrt router.

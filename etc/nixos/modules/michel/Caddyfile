@@ -1,0 +1,76 @@
+# HTTP to HTTPS redirection
+#http:// {
+#	redir https://{host}{uri} permanent
+#}
+
+{
+	http_port 80
+	https_port 443
+	admin off
+    metrics
+
+	layer4 {
+		:25565 {
+			route {
+				proxy {
+					upstream 172.16.5.1:25565
+				}
+			}
+		}
+	}
+}
+
+# =========================================================================
+# ISOLATED MONITORING PORTALS (Completely separated from your app blocks)
+# =========================================================================
+(protected_stats) {
+    @vpn remote_ip 10.100.0.0/24 192.168.101.0/24 192.168.10.0/24
+    handle @vpn {
+        root * /srv/stats
+        rewrite * {args[0]}
+        file_server
+    }
+    respond "403 Forbidden: ACL Privilege Mismatch" 403
+}
+
+:80 {
+    log
+
+    handle /git/stats* {
+        import protected_stats /git-web.html
+    }
+
+    handle /stats* {
+        import protected_stats /lbmt-darkroom.html
+    }
+
+	# git-web
+	redir /git/ /git
+	handle /git* {
+		reverse_proxy http://172.16.4.1:8080 {
+		    flush_interval -1
+		}
+	}
+
+	handle /ceci* {
+		reverse_proxy http://172.16.7.1:8080
+	}
+
+	# temporary as it will go into private eventually
+	handle /rcon* {
+		reverse_proxy http://10.1.4.1:8080
+	}
+	handle /editor* {
+		reverse_proxy http://10.1.7.1:8080
+	}
+
+	# lbmt-darkroom
+    handle {
+        reverse_proxy http://172.16.1.1:8080
+    }
+}
+
+:443 {
+	tls internal
+	respond "BOO!"
+}

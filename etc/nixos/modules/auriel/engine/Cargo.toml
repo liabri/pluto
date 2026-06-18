@@ -1,0 +1,24 @@
+[package]
+name = "auriel-engine"
+version = "0.2.0"
+edition = "2021"
+authors = ["liabri"]
+description = "High-performance, minimalist headless RAG gateway"
+
+[dependencies]
+tokio = { version = "1.40", features = ["full"] }
+futures-util = "0.3"
+axum = { version = "0.7", features = ["json"] }
+qdrant-client = "1.18"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+reqwest = { version = "0.12", features = ["json", "stream"] }
+tracing = "0.1"
+tracing-subscriber = "0.3"
+
+[profile.release]
+opt-level = 3           # Maximum compiler optimizations
+lto = true              # Link-Time Optimization
+codegen-units = 1       # Reduces parallelism during compilation for smaller, faster machine code
+panic = "abort"         # Removes stack-unwinding code to make the static binary hyper-lean
+strip = true            # Strips all symbols and debugging info automatically
